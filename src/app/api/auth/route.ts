@@ -10,7 +10,11 @@ import {
 } from "@/lib/server";
 export async function GET() {
   try {
-    return Response.json({ user: await session(), liveReady: liveReady() });
+    const visitor = await session();
+    return Response.json({
+      user: visitor.guest ? null : visitor,
+      liveReady: liveReady(),
+    });
   } catch {
     return Response.json({ user: null, liveReady: liveReady() });
   }
@@ -21,7 +25,7 @@ export async function POST(req: Request) {
     const p = z
       .object({
         action: z.enum(["signin", "signup", "signout", "profile"]),
-        email: z.email().optional(),
+        email: z.string().trim().min(3).max(254).optional(),
         password: z.string().min(8).max(128).optional(),
         name: z.string().trim().min(2).max(60).optional(),
       })
@@ -43,10 +47,13 @@ export async function POST(req: Request) {
     }
     if (!p.email || !p.password)
       throw new HttpError(400, "Enter an email and password.");
+    const loginEmail = p.email.includes("@")
+      ? p.email
+      : `${p.email.toLowerCase()}@patients.careline.invalid`;
     const result =
       p.action === "signup"
         ? await supabase.auth.signUp({
-            email: p.email,
+            email: loginEmail,
             password: p.password,
             options: {
               data: { display_name: p.name || "Demo visitor" },
@@ -54,7 +61,7 @@ export async function POST(req: Request) {
             },
           })
         : await supabase.auth.signInWithPassword({
-            email: p.email,
+            email: loginEmail,
             password: p.password,
           });
     if (result.error)

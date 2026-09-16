@@ -1452,3 +1452,7 @@ h1 em {
     width: 18px;
   }
 }
+
+/* Patient IDs remain readable on small screens. */
+.proposal > div { min-width: 0; }
+.proposal strong { overflow-wrap: anywhere; }

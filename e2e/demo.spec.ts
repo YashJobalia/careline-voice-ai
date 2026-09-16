@@ -5,7 +5,7 @@ async function signIn(page: Page) {
     .getByRole("button", { name: "Sign in", exact: true })
     .first()
     .click();
-  await page.getByLabel("Email address").fill(process.env.TEST_EMAIL!);
+  await page.getByLabel("Patient ID or email").fill(process.env.TEST_EMAIL!);
   await page
     .getByLabel("Password", { exact: true })
     .fill(process.env.TEST_PASSWORD!);
@@ -16,7 +16,7 @@ async function signIn(page: Page) {
   await expect(page.locator("dialog[open]")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Start conversation" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
 }
 test("single AI receptionist and responsive layout", async ({ page }) => {
   await page.goto("/");
@@ -28,7 +28,7 @@ test("single AI receptionist and responsive layout", async ({ page }) => {
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Start conversation" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(

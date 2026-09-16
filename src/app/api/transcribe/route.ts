@@ -11,7 +11,8 @@ export async function POST(req: Request) {
   try {
     sameOrigin(req);
     const visitor = await session();
-    if (!liveReady()) throw new HttpError(503, "The AI receptionist is not configured yet.");
+    if (!liveReady())
+      throw new HttpError(503, "The AI receptionist is not configured yet.");
     if (Number(req.headers.get("content-length")) > 3_500_000)
       throw new HttpError(
         413,

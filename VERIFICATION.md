@@ -2,6 +2,13 @@
 
 Production: https://careline-sandy.vercel.app
 
+## Guest registration and appointment codes
+
+- Guest start, explicit registration consent, declined/tampered/cross-session confirmation rejection, patient-ID login, code format, code persistence, and cancellation verified in browser/API tests with fictional data.
+- Registration UI testing uses a mocked model response; real Supabase Auth, Edge Function, database, signed confirmations, and scheduling APIs are exercised.
+- Current OpenAI key still returns 429 credit_balance_exhausted. Real model conversation and transcription cannot pass until billing is funded.
+- Guest sessions are intentionally permitted, with ownership RLS and existing global/per-visitor quotas. The shared demo password is unsuitable for real patient data.
+
 ## Single-experience UI update
 
 - Removed the practice/guided selector; conversations use the OpenAI route.

@@ -6,13 +6,16 @@ A Next.js portfolio demo for a fictional multispecialty clinic. Browser voice an
 
 ## Features
 
-- Email/password sign-up, sign-in, sign-out, and display-name editing with Supabase Auth.
+- Open guest conversation with Supabase anonymous sessions; no account or access code required to talk.
+- AI prepares patient registration from a fictional name and date of birth; an explicit Confirm account button creates the patient account.
+- Patient-ID/password login plus existing email accounts, sign-out, and display-name editing.
+- Unique appointment references such as AB123, displayed and spoken after confirmation.
 - Cardiology, Otorhinolaryngology (ENT), and Dermatology; two fictional physicians per department.
 - A single conversational receptionist powered by OpenAI tool calling.
 - Push-to-talk, browser speech playback, live transcript, and typed fallback.
 - Database-backed availability, explicit confirmation, persistent appointments, and cancellation.
 - Row-level security isolates appointments by account. A partial unique index prevents double booking.
-- Live AI requires a host-provided access code. Atomic database quotas allow 30 AI/transcription requests per account per UTC day, and 150 across the project. These are request limits, not a guaranteed dollar spending cap.
+- Atomic database quotas allow 30 model/transcription requests per visitor per UTC day and 150 across the project. Each model tool round counts. These are request limits, not a guaranteed dollar spending cap. Guest sign-ins also use Supabase rate limits.
 
 ## Run locally
 
@@ -29,22 +32,21 @@ Open http://localhost:3000. Do not overwrite an existing `.env.local` with confi
 
 ## Environment
 
-| Variable                               | Purpose                                                                  |
-| -------------------------------------- | ------------------------------------------------------------------------ |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL                                                     |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase key; data access is controlled by RLS                    |
-| `SESSION_SECRET`                       | Random 32-byte secret for signed booking confirmations                   |
-| `OPENAI_API_KEY`                       | Server-side key with available API credit                                |
-| `OPENAI_MODEL`                         | Defaults to `gpt-4o-mini`                                                |
-| `DEMO_ACCESS_CODE`                     | Private code to unlock paid AI, available in your local environment file |
+| Variable                               | Purpose                                                |
+| -------------------------------------- | ------------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL                                   |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase key; data access is controlled by RLS  |
+| `SESSION_SECRET`                       | Random 32-byte secret for signed booking confirmations |
+| `OPENAI_API_KEY`                       | Server-side key with available API credit              |
+| `OPENAI_MODEL`                         | Defaults to `gpt-4o-mini`                              |
 
-No Supabase service-role key is required. All app database calls use the signed-in user's JWT. Never expose the OpenAI key or session secret through `NEXT_PUBLIC_` variables.
+No Supabase service-role key belongs in Next.js. Scheduling calls use the visitor's JWT. The register-patient Supabase Edge Function validates that JWT and uses its built-in service-role credential only to register the consenting guest. Never expose the OpenAI key or session secret through `NEXT_PUBLIC_` variables.
 
 ## Supabase
 
 Hosted project: https://supabase.com/dashboard/project/ofdidlumvcgynpdatpre
 
-The initial, account, and private-function migrations are already applied. For a fresh project, run `supabase/setup.sql`, `supabase/user-accounts.sql`, then `supabase/private-functions.sql` once each. Initial seeding provides two weeks of weekday slots in America/Chicago. To add future slots, run only the slot-insertion section of `setup.sql`; do not rerun the full old bootstrap on an upgraded schema.
+The initial, account, and private-function migrations are already applied. For a fresh project, run `supabase/setup.sql`, `supabase/user-accounts.sql`, then `supabase/private-functions.sql` and the SQL files in `supabase/migrations/` in order. Enable anonymous sign-ins and deploy `supabase/functions/register-patient/index.ts` as `register-patient`. The function validates bearer tokens with getUser; gateway JWT verification is disabled to support the project signing-key configuration. Initial seeding provides two weeks of weekday slots in America/Chicago. To add future slots, run only the slot-insertion section of `setup.sql`; do not rerun the full old bootstrap on an upgraded schema.
 
 Email confirmation remains enabled. In Supabase Authentication → URL Configuration, set the Site URL to your deployed app URL and add its `/auth/callback` URL to the redirect allowlist. Confirm your email, then return to CareLine and sign in. Signup email delivery depends on Supabase's email rate limits and SMTP configuration.
 
@@ -52,11 +54,14 @@ Public users can read clinic data and sanitized slot availability, but cannot re
 
 ## Demo walkthrough
 
-1. Sign up, confirm your email, and sign in.
-2. Enter the host-provided demo access code to unlock the AI receptionist.
-3. Type a request such as "I would like the earliest Dermatology appointment with Dr. Maya Shah."
-4. Continue the conversation, provide a fictional patient name, and review the proposed slot.
-5. Click Confirm appointment, then manage or cancel it under My appointments.
+1. Click Start conversation; no login or access code is required.
+2. Provide a fictional name and date of birth when asked. Review and click Confirm account. Declining does not create a patient profile.
+3. Save the generated patient ID. For this fictional demo the password is Careline@123, as requested; this is not suitable for real patient data or a production clinic.
+4. Describe the reason for the visit. Confirm the suggested specialty and choose a physician and an actual available time.
+5. Click Confirm appointment. The assistant provides the server-generated code (two uppercase letters and three digits).
+6. Sign back in with the patient ID/password to see the saved code or cancel the appointment.
+
+Temporary anonymous auth sessions exist before registration, but contain no patient profile. Name/date-of-birth are not login credentials. Appointment codes are references, not authentication tokens. Codes are unique and never reused; this format supports 676,000 lifetime references, after which booking fails rather than reusing a code.
 
 Voice input uses browser MediaRecorder and OpenAI transcription; responses use browser speech synthesis. This is push-to-talk, not full-duplex realtime audio. Text input is available throughout. Transcripts remain in memory; audio is not stored in the database. A funded OpenAI API account is required; the app does not silently fall back to scripted replies.
 
@@ -85,8 +90,12 @@ npm run build
 npx playwright test
 ```
 
-Browser tests use installed Chrome and a running app. Account tests require `.env.test.local` containing dedicated `TEST_EMAIL`, `TEST_EMAIL_TWO`, and `TEST_PASSWORD`. Live tests require a funded OpenAI key and consume small amounts of API credit. `scripts/test-fixtures.cjs` generates isolated test fixtures for this development database; never seed them into unrelated databases.
+Browser tests use installed Chrome and a running app. Account tests require `.env.test.local` containing dedicated `TEST_EMAIL`, `TEST_EMAIL_TWO`, and `TEST_PASSWORD`. Set RUN_LIVE_AI_TESTS=1 to opt into real-model tests. Live tests require a funded OpenAI key and consume small amounts of API credit. `scripts/test-fixtures.cjs` generates isolated test fixtures for this development database; never seed them into unrelated databases.
 
 ## Deployment
 
 The project is deployed on Vercel as `careline` in `yash-jobalias-projects`. Production and preview environment variables have been configured. Run `npx vercel --prod` after changes. No paid Vercel plan is required for this personal demo within Hobby limits. The OpenAI balance is separate.
+
+### Scheduling boundaries
+
+The receptionist suggests specialties for scheduling, not diagnoses or treatment. Ambiguous cases go to clinic staff; possible emergency symptoms interrupt routine scheduling. Emergency wording is informed by [NHS shortness-of-breath guidance](https://www.nhs.uk/symptoms/shortness-of-breath/).

@@ -1,4 +1,5 @@
 "use client";
+import type { Registration } from "@/lib/patient";
 
 import {
   useCallback,
@@ -48,7 +49,7 @@ import {
   type Proposal,
   type Slot,
 } from "@/lib/clinic";
-type User = { id: string; email: string; name: string };
+type User = { id: string; email: string; name: string; patientId?: string };
 type View = "reception" | "appointments" | "specialists" | "account";
 async function api<T>(
   path: string,
@@ -84,9 +85,12 @@ export function CarelineApp() {
   const [notice, setNotice] = useState("");
   const [seconds, setSeconds] = useState(0);
   const [actions, setActions] = useState<string[]>([]);
-  const [liveReady, setLiveReady] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
-  const [code, setCode] = useState("");
+  const [registration, setRegistration] = useState<Registration>();
+  const [credentials, setCredentials] = useState<{
+    patientId: string;
+    password: string;
+  }>();
+
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -107,7 +111,6 @@ export function CarelineApp() {
       "/api/clinic",
     );
     setSlots(clinic.slots);
-    setLiveReady(clinic.liveReady);
   }, []);
   const refreshBookings = useCallback(async () => {
     const result = await api<{ appointments: Appointment[] }>(
@@ -125,7 +128,6 @@ export function CarelineApp() {
         if (!mounted) return;
         setUser(auth.user);
         setProfileName(auth.user?.name || "");
-        setLiveReady(auth.liveReady);
         setSlots(clinic.slots);
         if (auth.user) {
           void refreshBookings().catch((e) => setError(e.message));
@@ -183,18 +185,30 @@ export function CarelineApp() {
     if (recordingTimer.current) clearTimeout(recordingTimer.current);
     window.speechSynthesis?.cancel();
     setProposal(undefined);
+    setRegistration(undefined);
     setChoices([]);
   }
-  function startCall() {
+  async function startCall() {
     endCall();
-    setActive(true);
-    setSeconds(0);
-    setMessages([{ role: "assistant", content: greeting }]);
-    setChoices([]);
+    setBusy(true);
     setError("");
-    setNotice("");
-    setActions([]);
-    speak(greeting);
+    try {
+      await api("/api/session", "POST", {});
+      setActive(true);
+      setSeconds(0);
+      const hello = user
+        ? "Welcome back to CareLine. What brings you in today?"
+        : greeting;
+      setMessages([{ role: "assistant", content: hello }]);
+      setChoices([]);
+      setNotice("");
+      setActions([]);
+      speak(hello);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   function resetConversation() {
     endCall();
@@ -250,7 +264,8 @@ export function CarelineApp() {
       endCall();
       setUser(null);
       setBookings([]);
-      setUnlocked(false);
+      setCredentials(undefined);
+      setRegistration(undefined);
       setView("reception");
       setNotice("You’ve been signed out.");
     } catch (e) {
@@ -283,11 +298,13 @@ export function CarelineApp() {
       const result = await api<{
         text: string;
         proposal?: Proposal;
+        registration?: Registration;
         actions: string[];
       }>("/api/chat", "POST", { messages: updated });
       if (version !== callVersion.current) return;
       setMessages([...updated, { role: "assistant", content: result.text }]);
       setProposal(result.proposal);
+      setRegistration(result.registration);
       setActions(result.actions);
       speak(result.text);
     } catch (e) {
@@ -304,15 +321,18 @@ export function CarelineApp() {
     setBusy(true);
     setError("");
     try {
-      await api("/api/appointments", "POST", { token: proposal.token });
+      const confirmed = await api<{ code: string }>(
+        "/api/appointments",
+        "POST",
+        { token: proposal.token },
+      );
       await Promise.all([refresh(), refreshBookings()]);
       setProposal(undefined);
       setChoices([]);
-      const text =
-        "Your demo appointment is confirmed and saved to your account. You can find it in My appointments.";
+      const text = `Your appointment is confirmed. Your appointment code is ${confirmed.code}. You can find it in My appointments.`;
       setMessages((v) => [...v, { role: "assistant", content: text }]);
-      setNotice("Appointment confirmed.");
-      speak(text);
+      setNotice(`Appointment confirmed. Code: ${confirmed.code}`);
+      speak(text.replace(confirmed.code, confirmed.code.split("").join(" ")));
     } catch (e) {
       setError((e as Error).message);
       void refresh().catch(() => {});
@@ -388,14 +408,33 @@ export function CarelineApp() {
       );
     }
   }
-  async function unlock() {
+  async function confirmRegistration() {
+    if (!registration || busy) return;
     setBusy(true);
     setError("");
     try {
-      await api("/api/session", "POST", { code });
-      setUnlocked(true);
-      setCode("");
-      setNotice("Your receptionist is ready for the next 30 minutes.");
+      const result = await api<{
+        patientId: string;
+        password: string;
+        user: User | null;
+        needsSignIn: boolean;
+      }>("/api/registration", "POST", {
+        token: registration.token,
+        confirmed: true,
+      });
+      setCredentials({
+        patientId: result.patientId,
+        password: result.password,
+      });
+      setUser(result.user);
+      setProfileName(result.user?.name || "");
+      setRegistration(undefined);
+      const text = result.needsSignIn
+        ? "Your demo account is created. Please sign in using the patient ID and password shown on screen."
+        : "Your demo patient account is created. What brings you in today?";
+      setMessages((v) => [...v, { role: "assistant", content: text }]);
+      speak(text);
+      if (result.user) await refreshBookings();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -419,7 +458,6 @@ export function CarelineApp() {
   }
   const visibleBookings = bookings;
   const available = slots;
-  const canStart = Boolean(user && liveReady && unlocked);
   const nav = [
     { id: "reception" as const, label: "Reception", icon: Headphones },
     {
@@ -559,42 +597,69 @@ export function CarelineApp() {
           )}
           {view === "reception" && (
             <>
-              {!user && (
-                <div className="inline-banner">
-                  <UserRound size={18} />
-                  <span>Sign in to save and manage your appointments.</span>
-                  <Button size="sm" onClick={openAuth}>
-                    Sign in
+              <div className="inline-banner">
+                <Sparkles size={18} />
+                <span>
+                  Speak or type to get started. No account needed to talk. Use
+                  fictional patient details for this demo.
+                </span>
+              </div>
+              {credentials && (
+                <Card className="proposal">
+                  <div>
+                    <h3>Your demo patient account</h3>
+                    <p>Save these details to sign in again.</p>
+                    <p>
+                      Patient ID: <strong>{credentials.patientId}</strong>
+                    </p>
+                    <p>
+                      Demo password: <strong>{credentials.password}</strong>
+                    </p>
+                    <small>
+                      Fictional demo accounts only. Do not use real patient
+                      information.
+                    </small>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCredentials(undefined)}
+                  >
+                    Dismiss credentials
                   </Button>
-                </div>
+                </Card>
               )}
-              {user && !unlocked && (
-                <div className="inline-banner">
-                  <Sparkles size={18} />
-                  <span>
-                    {liveReady
-                      ? "Enter the demo access code to start your conversation."
-                      : "The AI receptionist is not configured yet. Please contact the demo host."}
-                  </span>
-                  {liveReady && (
-                    <>
-                      <input
-                        type="password"
-                        aria-label="Demo access code"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder="Demo access code"
-                      />
-                      <Button
-                        size="sm"
-                        onClick={unlock}
-                        disabled={busy || !code}
-                      >
-                        Unlock
-                      </Button>
-                    </>
-                  )}
-                </div>
+              {registration && (
+                <Card className="proposal">
+                  <div>
+                    <h3>Confirm your patient account</h3>
+                    <p>Name: {registration.name}</p>
+                    <p>Date of birth: {registration.dateOfBirth}</p>
+                    <small>
+                      Confirm to save these fictional details and create your
+                      demo account.
+                    </small>
+                  </div>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      setRegistration(undefined);
+                      setMessages((v) => [
+                        ...v,
+                        {
+                          role: "assistant",
+                          content:
+                            "No account was created. Tell me what you would like to change, or ask me a clinic question.",
+                        },
+                      ]);
+                    }}
+                  >
+                    Not now
+                  </Button>
+                  <Button disabled={busy} onClick={confirmRegistration}>
+                    Confirm account
+                  </Button>
+                </Card>
               )}
               <div className="reception-grid">
                 <Card className="call-card">
@@ -692,7 +757,7 @@ export function CarelineApp() {
                       ) : (
                         <Button
                           onClick={startCall}
-                          disabled={!canStart || loading}
+                          disabled={busy || loading}
                           className="start-call"
                         >
                           <Phone size={18} />
@@ -917,6 +982,9 @@ export function CarelineApp() {
                 <div className="appointments-list">
                   {visibleBookings.map((b) => (
                     <Card key={b.id} className="appointment-row">
+                      <strong aria-label="Appointment code">
+                        {b.appointment_code}
+                      </strong>
                       <span className="doctor-avatar">
                         {doctorFor(b.slot.doctor_id)?.initials}
                       </span>
@@ -1053,7 +1121,7 @@ export function CarelineApp() {
                   </label>
                   <label>
                     Email
-                    <input value={user.email} disabled />
+                    <input value={user.patientId || user.email} disabled />
                   </label>
                   <Button disabled={busy}>Save profile</Button>
                 </form>
@@ -1117,13 +1185,13 @@ export function CarelineApp() {
             </label>
           )}
           <label>
-            Email address
+            {authMode === "signin" ? "Patient ID or email" : "Email address"}
             <input
               name="email"
-              type="email"
-              autoComplete="email"
+              type="text"
+              autoComplete="username"
               required
-              placeholder="you@example.com"
+              placeholder="Patient ID or email"
             />
           </label>
           <label>

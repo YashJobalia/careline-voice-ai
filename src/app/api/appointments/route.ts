@@ -11,6 +11,11 @@ import {
 export async function GET() {
   try {
     const visitor = await session();
+    if (visitor.guest)
+      throw new HttpError(
+        403,
+        "Confirm your patient registration before booking.",
+      );
     return Response.json({ appointments: await appointments(visitor.id) });
   } catch (e) {
     return failure(e);
@@ -20,6 +25,11 @@ export async function PUT(req: Request) {
   try {
     sameOrigin(req);
     const visitor = await session();
+    if (visitor.guest)
+      throw new HttpError(
+        403,
+        "Confirm your patient registration before booking.",
+      );
     const p = z
       .object({
         slotId: z.uuid(),
@@ -56,6 +66,11 @@ export async function POST(req: Request) {
   try {
     sameOrigin(req);
     const visitor = await session();
+    if (visitor.guest)
+      throw new HttpError(
+        403,
+        "Confirm your patient registration before booking.",
+      );
     const { token } = z
       .object({ token: z.string().max(2000) })
       .parse(await req.json());
@@ -67,15 +82,21 @@ export async function POST(req: Request) {
     }>(token);
     if (p.sessionId !== visitor.id)
       throw new HttpError(403, "This booking belongs to another session.");
-    const result = await db<{ id: string }[]>("careline_appointments", {
-      method: "POST",
-      body: JSON.stringify({
-        slot_id: p.slotId,
-        patient_name: p.patientName,
-        session_id: visitor.id,
-      }),
-    });
-    return Response.json({ id: result[0].id }, { status: 201 });
+    const result = await db<{ id: string; appointment_code: string }[]>(
+      "careline_appointments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          slot_id: p.slotId,
+          patient_name: p.patientName,
+          session_id: visitor.id,
+        }),
+      },
+    );
+    return Response.json(
+      { id: result[0].id, code: result[0].appointment_code },
+      { status: 201 },
+    );
   } catch (e) {
     return failure(e);
   }

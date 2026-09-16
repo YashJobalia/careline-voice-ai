@@ -68,6 +68,7 @@ export const doctors = [
 ] as const;
 export type Slot = { id: string; doctor_id: string; starts_at: string };
 export type Appointment = {
+  appointment_code?: string;
   id: string;
   slot_id: string;
   patient_name: string;
@@ -114,4 +115,4 @@ export function practiceSlots(now = new Date()): Slot[] {
   return slots;
 }
 export const greeting =
-  "Hello, welcome to CareLine. I’m your automated receptionist. Which department would you like to book with: Cardiology, ENT, or Dermatology?";
+  "Hello, welcome to CareLine. I can help you find a doctor and book an appointment. For this demo, please use fictional details. Would you like me to help you create a patient account, or do you have a clinic question?";

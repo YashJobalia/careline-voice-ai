@@ -9,10 +9,7 @@ export const databaseReady = () =>
   );
 export const liveReady = () =>
   Boolean(
-    databaseReady() &&
-    process.env.OPENAI_API_KEY &&
-    process.env.DEMO_ACCESS_CODE &&
-    process.env.SESSION_SECRET,
+    databaseReady() && process.env.OPENAI_API_KEY && process.env.SESSION_SECRET,
   );
 export class HttpError extends Error {
   constructor(
@@ -53,7 +50,14 @@ export function verify<T>(token: string): T {
     throw new HttpError(401, "Confirmation expired. Please start again.");
   }
 }
-export type Session = { id: string; exp: number; email?: string; name: string };
+export type Session = {
+  id: string;
+  exp: number;
+  email?: string;
+  name: string;
+  guest?: boolean;
+  patientId?: string;
+};
 export async function session(): Promise<Session> {
   if (!databaseReady())
     throw new HttpError(503, "Accounts are not configured.");
@@ -67,21 +71,27 @@ export async function session(): Promise<Session> {
     id: user.id,
     exp: Date.now() + 30 * 60 * 1000,
     email: user.email,
+    guest: !user.email,
+    patientId: user.user_metadata?.patient_id,
     name: String(user.user_metadata?.display_name || ""),
   };
 }
 export async function authorizeAI() {
-  const user = await session();
   if (!liveReady())
+    throw new HttpError(503, "The AI receptionist is not configured yet.");
+  try {
+    return await session();
+  } catch (e) {
+    if (!(e instanceof HttpError) || e.status !== 401) throw e;
+  }
+  const supabase = await supabaseServer();
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error)
     throw new HttpError(
-      503,
-      "The AI receptionist is not configured yet. Please contact the demo host.",
+      error.status === 429 ? 429 : 503,
+      "Could not start a guest conversation. Please try again shortly.",
     );
-  const token = (await cookies()).get("careline-ai")?.value;
-  const grant = token ? verify<{ id: string; exp: number }>(token) : null;
-  if (!grant || grant.id !== user.id)
-    throw new HttpError(403, "Enter the demo access code to start your conversation.");
-  return user;
+  return session();
 }
 export function sameOrigin(req: Request) {
   const origin = req.headers.get("origin");
@@ -146,7 +156,7 @@ export async function quota(id: string) {
   )
     throw new HttpError(
       429,
-      "Daily demo usage limit reached. Guided booking is still available.",
+      "Daily demo conversation limit reached. Please try again tomorrow.",
     );
 }
 export function failure(error: unknown) {

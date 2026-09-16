@@ -16,6 +16,8 @@ export async function proposal(
   patientName: string,
   visitor: Session,
 ) {
+  if (visitor.guest)
+    throw new HttpError(403, "Confirm your patient registration first.");
   const slots = await availableSlots();
   const slot = slots.find((s) => s.id === slotId);
   if (!slot) throw new HttpError(409, "This slot is no longer available.");
@@ -34,7 +36,7 @@ export async function appointments(visitor: string) {
   const rows = await db<
     (Omit<Appointment, "slot"> & { careline_slots: Slot })[]
   >(
-    `careline_appointments?select=id,slot_id,patient_name,created_at,status,careline_slots(id,doctor_id,starts_at)&session_id=eq.${encodeURIComponent(visitor)}&order=created_at.desc&limit=100`,
+    `careline_appointments?select=id,slot_id,patient_name,created_at,status,appointment_code,careline_slots(id,doctor_id,starts_at)&session_id=eq.${encodeURIComponent(visitor)}&order=created_at.desc&limit=100`,
   );
   return rows.map(({ careline_slots, ...row }) => ({
     ...row,
