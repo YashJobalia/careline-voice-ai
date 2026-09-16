@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     if (!liveReady())
       throw new HttpError(
         503,
-        "Live AI is not configured yet. Try guided booking.",
+        "The AI receptionist is not configured yet. Please contact the demo host.",
       );
     const { code } = z
       .object({ code: z.string().max(100) })

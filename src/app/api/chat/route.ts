@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       if (!response.ok)
         throw new HttpError(
           502,
-          "The AI service is unavailable. Check API billing or use guided booking.",
+          "The AI receptionist is temporarily unavailable. Please try again later or contact the demo host.",
         );
       const result = (await response.json()) as { output: Item[] };
       input.push(...result.output);
@@ -115,7 +115,7 @@ export async function POST(req: Request) {
           .map((c) => c.text)
           .join("");
         return Response.json({
-          text: text || "Please try again or use guided booking.",
+          text: text || "I could not respond to that. Could you try again?",
           proposal: prepared,
           actions,
         });

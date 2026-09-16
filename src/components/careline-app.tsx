@@ -395,7 +395,7 @@ export function CarelineApp() {
       await api("/api/session", "POST", { code });
       setUnlocked(true);
       setCode("");
-      setNotice("Live AI unlocked for 30 minutes.");
+      setNotice("Your receptionist is ready for the next 30 minutes.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -573,7 +573,7 @@ export function CarelineApp() {
                   <Sparkles size={18} />
                   <span>
                     {liveReady
-                      ? "Enter your host’s demo code to enable live AI."
+                      ? "Enter the demo access code to start your conversation."
                       : "The AI receptionist is not configured yet. Please contact the demo host."}
                   </span>
                   {liveReady && (

@@ -75,12 +75,12 @@ export async function authorizeAI() {
   if (!liveReady())
     throw new HttpError(
       503,
-      "Live AI is not connected yet. Guided booking is available.",
+      "The AI receptionist is not configured yet. Please contact the demo host.",
     );
   const token = (await cookies()).get("careline-ai")?.value;
   const grant = token ? verify<{ id: string; exp: number }>(token) : null;
   if (!grant || grant.id !== user.id)
-    throw new HttpError(403, "Enter the demo access code to use live AI.");
+    throw new HttpError(403, "Enter the demo access code to start your conversation.");
   return user;
 }
 export function sameOrigin(req: Request) {
