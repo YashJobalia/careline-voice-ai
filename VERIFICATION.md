@@ -2,6 +2,12 @@
 
 Production: https://careline-sandy.vercel.app
 
+## Single-experience UI update
+
+- Removed the practice/guided selector; conversations use the OpenAI route.
+- TypeScript and production build passed.
+- Three local browser tests passed: single-experience responsive layout, account booking lifecycle, and booking security/concurrency.
+
 ## Previous deployment checks (before single-experience UI update)
 
 - TypeScript strict type checking and Next.js production build.
