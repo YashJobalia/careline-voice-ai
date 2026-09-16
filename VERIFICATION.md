@@ -2,11 +2,17 @@
 
 Production: https://careline-sandy.vercel.app
 
+## Hands-free voice
+
+- Browser test used synthetic microphone audio with real Chrome capture, MediaRecorder encoding, and local voice activity detection. Two turns submitted automatically without record-button clicks; mute and end stopped all microphone tracks. Model/transcription endpoints were mocked in this browser-control test.
+- A separate funded OpenAI test passed the complete registration-to-booking journey; real transcription passed with a synthetic speech sample.
+- TypeScript and the Next.js production build passed. Physical microphone behavior and room-noise thresholds still need user-device testing.
+
 ## Guest registration and appointment codes
 
 - Guest start, explicit registration consent, declined/tampered/cross-session confirmation rejection, patient-ID login, code format, code persistence, and cancellation verified in browser/API tests with fictional data.
 - Registration UI testing uses a mocked model response; real Supabase Auth, Edge Function, database, signed confirmations, and scheduling APIs are exercised.
-- Current OpenAI key still returns 429 credit_balance_exhausted. Real model conversation and transcription cannot pass until billing is funded.
+- After API funding, a real OpenAI conversation completed guest registration, symptom discussion, availability lookup, appointment proposal, confirmation, and code display. The synthetic voice sample also passed real OpenAI transcription.
 - Guest sessions are intentionally permitted, with ownership RLS and existing global/per-visitor quotas. The shared demo password is unsuitable for real patient data.
 
 ## Single-experience UI update
@@ -29,9 +35,9 @@ Production: https://careline-sandy.vercel.app
 
 ## External setup / verification remaining
 
-- OpenAI responded with HTTP 429, `credit_balance_exhausted`. Live AI conversation and API transcription are implemented but not yet verified successfully against a funded account. Add API credit and rerun the live test.
+- Earlier OpenAI quota errors were resolved after funding. Live conversation and synthetic-audio transcription tests passed.
 - Supabase Auth confirmation email delivery was not tested using a real mailbox. Configure Site URL and allowed redirect URL for the deployed domain in Supabase Auth settings.
-- Real microphone capture and voice quality require a user-device check. Browser speech recognition support varies; text input works as a fallback.
+- Real microphone capture and voice quality require a user-device check. Microphone/voice activity detection depends on device and room noise; text input works as a fallback.
 - Supabase's leaked-password protection remains disabled in project settings. Row-level security is enabled. The quota table intentionally has no direct public policies; only the bounded authenticated quota function can change it.
 
 The isolated test accounts use `example.test` addresses. Their credentials live only in ignored `.env.test.local`; all test appointments were cancelled. No real patient records were used.

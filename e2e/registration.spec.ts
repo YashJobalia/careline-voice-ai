@@ -10,7 +10,7 @@ test("guest registration requires consent, isolates drafts, and returns a bookin
   ).toBeEnabled();
   await page.getByRole("button", { name: "Start conversation" }).click();
   await expect(
-    page.getByRole("button", { name: "Click to speak" }),
+    page.getByRole("button", { name: /Enable microphone|Mute microphone/ }),
   ).toBeVisible();
   const draftResponse = await page.request.put("/api/registration", {
     data: { name: "Fictional Guest", dateOfBirth: "1995-06-15" },

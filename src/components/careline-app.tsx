@@ -1,4 +1,5 @@
 "use client";
+import { useHandsFreeVoice } from "./use-hands-free-voice";
 import type { Registration } from "@/lib/patient";
 
 import {
@@ -22,6 +23,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mic,
+  MicOff,
   Phone,
   PhoneOff,
   Plus,
@@ -77,7 +79,6 @@ export function CarelineApp() {
   const [proposal, setProposal] = useState<Proposal>();
   const [active, setActive] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [recording, setRecording] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [muted, setMuted] = useState(false);
   const [input, setInput] = useState("");
@@ -101,11 +102,15 @@ export function CarelineApp() {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancelDialog = useRef<HTMLDialogElement>(null);
   const transcript = useRef<HTMLDivElement>(null);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const stream = useRef<MediaStream | null>(null);
-  const recordingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callVersion = useRef(0);
   const sending = useRef(false);
+  const speechVersion = useRef(0);
+  const voice = useHandsFreeVoice({
+    active: active && view === "reception",
+    paused: busy || speaking || Boolean(registration) || Boolean(proposal),
+    onAudio: transcribeTurn,
+    onError: setError,
+  });
   const refresh = useCallback(async () => {
     const clinic = await api<{ slots: Slot[]; liveReady: boolean }>(
       "/api/clinic",
@@ -157,32 +162,35 @@ export function CarelineApp() {
   useEffect(
     () => () => {
       callVersion.current++;
-      stream.current?.getTracks().forEach((t) => t.stop());
-      if (recordingTimer.current) clearTimeout(recordingTimer.current);
       window.speechSynthesis?.cancel();
     },
     [],
   );
   function speak(text: string) {
-    if (muted || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+    const version = ++speechVersion.current;
+    window.speechSynthesis?.cancel();
+    if (muted || !("speechSynthesis" in window)) {
+      setSpeaking(false);
+      return;
+    }
+    setSpeaking(true);
+    const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, ""));
     utterance.rate = 1;
-    utterance.onstart = () => setSpeaking(true);
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
+    const done = () => {
+      if (version === speechVersion.current) setSpeaking(false);
+    };
+    utterance.onend = done;
+    utterance.onerror = done;
     window.speechSynthesis.speak(utterance);
   }
   function endCall() {
+    voice.stop();
+    speechVersion.current++;
     callVersion.current++;
     setActive(false);
-    setRecording(false);
     setSpeaking(false);
     setBusy(false);
     sending.current = false;
-    if (recorder.current?.state === "recording") recorder.current.stop();
-    stream.current?.getTracks().forEach((t) => t.stop());
-    if (recordingTimer.current) clearTimeout(recordingTimer.current);
     window.speechSynthesis?.cancel();
     setProposal(undefined);
     setRegistration(undefined);
@@ -194,6 +202,7 @@ export function CarelineApp() {
     setError("");
     try {
       await api("/api/session", "POST", {});
+      await voice.start();
       setActive(true);
       setSeconds(0);
       const hello = user
@@ -340,72 +349,35 @@ export function CarelineApp() {
       setBusy(false);
     }
   }
-  async function toggleMic() {
-    if (recording) {
-      if (recorder.current?.state === "recording") recorder.current.stop();
-      return;
-    }
-    if (!active || busy) return;
-    setError("");
-    window.speechSynthesis?.cancel();
-    setSpeaking(false);
+  async function transcribeTurn(audio: Blob) {
     const version = callVersion.current;
+    if (!active || busy || sending.current) return;
+    setBusy(true);
+    setError("");
     try {
-      const audio = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (version !== callVersion.current) {
-        audio.getTracks().forEach((t) => t.stop());
-        return;
+      const data = new FormData();
+      const type = audio.type.split(";")[0];
+      data.set(
+        "audio",
+        audio,
+        `recording.${type === "audio/mp4" ? "mp4" : type === "audio/ogg" ? "ogg" : "webm"}`,
+      );
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: data,
+      });
+      const result = await response.json();
+      if (version !== callVersion.current) return;
+      if (!response.ok)
+        throw new Error(result.error || "Could not transcribe that turn.");
+      if (result.text?.trim()) await send(result.text);
+    } catch (e) {
+      if (version === callVersion.current) {
+        voice.stop();
+        setError((e as Error).message);
       }
-      stream.current = audio;
-      const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((t) =>
-        MediaRecorder.isTypeSupported(t),
-      );
-      const r = new MediaRecorder(audio, mime ? { mimeType: mime } : undefined);
-      recorder.current = r;
-      const chunks: Blob[] = [];
-      r.ondataavailable = (e) => {
-        if (e.data.size) chunks.push(e.data);
-      };
-      r.onstop = async () => {
-        audio.getTracks().forEach((t) => t.stop());
-        if (recordingTimer.current) clearTimeout(recordingTimer.current);
-        setRecording(false);
-        if (version !== callVersion.current) return;
-        setBusy(true);
-        try {
-          const type = r.mimeType.split(";")[0];
-          const data = new FormData();
-          data.set(
-            "audio",
-            new Blob(chunks, { type }),
-            `recording.${type === "audio/mp4" ? "mp4" : type === "audio/ogg" ? "ogg" : "webm"}`,
-          );
-          const response = await fetch("/api/transcribe", {
-            method: "POST",
-            body: data,
-          });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error);
-          if (version === callVersion.current) {
-            setBusy(false);
-            if (result.text?.trim()) await send(result.text);
-            else setError("No speech detected. Please try again.");
-          }
-        } catch (e) {
-          if (version === callVersion.current) setError((e as Error).message);
-        } finally {
-          if (version === callVersion.current) setBusy(false);
-        }
-      };
-      r.start();
-      setRecording(true);
-      recordingTimer.current = setTimeout(() => {
-        if (r.state === "recording") r.stop();
-      }, 30000);
-    } catch {
-      setError(
-        "Microphone access failed. Allow microphone permission or type your message.",
-      );
+    } finally {
+      if (version === callVersion.current) setBusy(false);
     }
   }
   async function confirmRegistration() {
@@ -468,14 +440,18 @@ export function CarelineApp() {
     { id: "specialists" as const, label: "Our specialists", icon: Stethoscope },
     { id: "account" as const, label: "My account", icon: UserRound },
   ];
-  const status = recording
-    ? "Listening to you"
+  const status = voice.hearingSpeech
+    ? "I?m listening"
     : busy
-      ? "Finding the right next step"
+      ? "Thinking?"
       : speaking
         ? "Your receptionist is speaking"
         : active
-          ? "Ready when you are"
+          ? registration || proposal
+            ? "Review and confirm below"
+            : voice.listening
+              ? "Listening ? go ahead"
+              : "Microphone paused"
           : "Your receptionist is ready";
   return (
     <div className="app-shell">
@@ -674,7 +650,7 @@ export function CarelineApp() {
                   </div>
                   <div className="call-center">
                     <div
-                      className={`voice-orbit ${recording || speaking ? "pulsing" : ""}`}
+                      className={`voice-orbit ${voice.hearingSpeech || speaking ? "pulsing" : ""}`}
                     >
                       <div className="orbit orbit-one" />
                       <div className="orbit orbit-two" />
@@ -738,12 +714,19 @@ export function CarelineApp() {
                             )}
                           </Button>
                           <Button
-                            className={recording ? "recording-button" : ""}
-                            onClick={toggleMic}
-                            disabled={busy}
+                            className={voice.enabled ? "recording-button" : ""}
+                            onClick={() =>
+                              voice.enabled ? voice.stop() : void voice.start()
+                            }
                           >
-                            <Mic size={19} />
-                            {recording ? "Stop recording" : "Click to speak"}
+                            {voice.enabled ? (
+                              <Mic size={19} />
+                            ) : (
+                              <MicOff size={19} />
+                            )}
+                            {voice.enabled
+                              ? "Mute microphone"
+                              : "Enable microphone"}
                           </Button>
                           <Button
                             variant="destructive"
@@ -768,8 +751,8 @@ export function CarelineApp() {
                     </div>
                     <span className="audio-note">
                       {active
-                        ? "Up to 30 seconds per recording."
-                        : "Microphone permission is requested only when you choose to speak."}
+                        ? "Hands-free: pause briefly when you finish speaking. Listening resumes after each reply."
+                        : "Allow microphone access to talk hands-free. You can also type."}
                     </span>
                   </div>
                   <div className="call-footer">
@@ -856,13 +839,13 @@ export function CarelineApp() {
                       }
                       value={input}
                       maxLength={1000}
-                      disabled={!active || busy || recording}
+                      disabled={!active || busy}
                       onChange={(e) => setInput(e.target.value)}
                     />
                     <Button
                       size="icon"
                       aria-label="Send message"
-                      disabled={!active || busy || recording || !input.trim()}
+                      disabled={!active || busy || !input.trim()}
                     >
                       <Send size={17} />
                     </Button>
@@ -1120,7 +1103,7 @@ export function CarelineApp() {
                     />
                   </label>
                   <label>
-                    Email
+                    {user.patientId ? "Patient ID" : "Email"}
                     <input value={user.patientId || user.email} disabled />
                   </label>
                   <Button disabled={busy}>Save profile</Button>
