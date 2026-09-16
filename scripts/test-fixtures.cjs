@@ -1,0 +1,6 @@
+const fs=require('node:fs');const crypto=require('node:crypto');
+const pw=crypto.randomBytes(24).toString('hex');
+const users=[{id:'70000000-0000-4000-8000-000000000001',email:'careline-test-one@example.test'},{id:'70000000-0000-4000-8000-000000000002',email:'careline-test-two@example.test'}];
+fs.writeFileSync('.env.test.local',`TEST_PASSWORD=${pw}\nTEST_EMAIL=${users[0].email}\nTEST_EMAIL_TWO=${users[1].email}\n`);
+const sql=users.map(u=>`insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,email_change,email_change_token_new,recovery_token) values('00000000-0000-0000-0000-000000000000','${u.id}','authenticated','authenticated','${u.email}',extensions.crypt('${pw}',extensions.gen_salt('bf')),now(),'${JSON.stringify({provider:'email',providers:['email']})}','${JSON.stringify({display_name:'Demo Tester'})}',now(),now(),'','','','') on conflict(id) do update set encrypted_password=excluded.encrypted_password;`).join('\n');
+fs.mkdirSync('artifacts',{recursive:true});fs.writeFileSync('artifacts/test-users.sql',sql);console.log('Generated isolated test account fixtures.');

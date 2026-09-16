@@ -1,0 +1,8 @@
+.env*
+artifacts
+e2e
+tests
+scripts
+supabase
+playwright.config.ts
+*.tsbuildinfo
