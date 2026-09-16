@@ -15,7 +15,7 @@ A Next.js portfolio demo for a fictional multispecialty clinic. Browser voice an
 - Hands-free microphone with local speech/pause detection, automatic turn submission, browser speech playback, live transcript, and typed fallback.
 - Database-backed availability, explicit confirmation, persistent appointments, and cancellation.
 - Row-level security isolates appointments by account. A partial unique index prevents double booking.
-- Atomic database quotas allow 30 model/transcription requests per visitor per UTC day and 150 across the project. Each model tool round counts. These are request limits, not a guaranteed dollar spending cap. Guest sign-ins also use Supabase rate limits.
+- No app-imposed daily request quota or conversation-turn cutoff. Recent messages are sent as a rolling context window. Provider billing, rate limits, and technical request-size limits still apply.
 
 ## Run locally
 
@@ -50,7 +50,7 @@ The initial, account, and private-function migrations are already applied. For a
 
 Email confirmation remains enabled. In Supabase Authentication → URL Configuration, set the Site URL to your deployed app URL and add its `/auth/callback` URL to the redirect allowlist. Confirm your email, then return to CareLine and sign in. Signup email delivery depends on Supabase's email rate limits and SMTP configuration.
 
-Public users can read clinic data and sanitized slot availability, but cannot read appointment details. The bounded SQL functions for cancellation and quotas explicitly verify `auth.uid()`. The availability function returns no patient data. Their elevated permissions are intentional and restricted to these operations.
+Public users can read clinic data and sanitized slot availability, but cannot read appointment details. The cancellation function explicitly verifies `auth.uid()`. Historical quota tables/functions are retained by the migrations but no longer called by the app. The availability function returns no patient data. Their elevated permissions are intentional and restricted to these operations.
 
 ## Demo walkthrough
 

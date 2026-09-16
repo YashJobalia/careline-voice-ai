@@ -16,9 +16,6 @@ Deno.serve(async (req) => {
     if (p.confirmed !== true || typeof p.name !== "string" || p.name.trim().length < 2 || p.name.length > 60 || typeof p.dateOfBirth !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.dateOfBirth)) return reply({ error: "Confirm a valid name and date of birth." }, 400);
     const date = new Date(p.dateOfBirth + "T00:00:00Z");
     if (Number.isNaN(date.getTime()) || date.toISOString().slice(0,10) !== p.dateOfBirth || p.dateOfBirth < "1900-01-01" || p.dateOfBirth > new Date().toISOString().slice(0,10)) return reply({ error: "Invalid date of birth." }, 400);
-    const guest = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } });
-    const { data: allowed, error: quotaError } = await guest.rpc("careline_take_quota", { visitor: user.id });
-    if (quotaError || !allowed) return reply({ error: "Demo limit reached. Try again tomorrow." }, 429);
     const patientId = "CL" + user.id.replaceAll("-", "").toUpperCase();
     const email = patientId.toLowerCase() + "@patients.careline.invalid";
     const password = "Careline@123"; // Fictional demo accounts only; never suitable for real patient data.

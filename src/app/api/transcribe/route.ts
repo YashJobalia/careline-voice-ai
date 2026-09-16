@@ -2,7 +2,6 @@ import {
   failure,
   HttpError,
   liveReady,
-  quota,
   sameOrigin,
   authorizeAI as session,
 } from "@/lib/server";
@@ -10,7 +9,7 @@ export const maxDuration = 30;
 export async function POST(req: Request) {
   try {
     sameOrigin(req);
-    const visitor = await session();
+    await session();
     if (!liveReady())
       throw new HttpError(503, "The AI receptionist is not configured yet.");
     if (Number(req.headers.get("content-length")) > 3_500_000)
@@ -31,7 +30,6 @@ export async function POST(req: Request) {
         400,
         "Send a short audio recording in a supported format.",
       );
-    await quota(visitor.id);
     const form = new FormData();
     form.set("file", file);
     form.set("model", "gpt-4o-mini-transcribe");

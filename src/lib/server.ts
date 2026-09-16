@@ -147,18 +147,6 @@ export async function db<T>(
   const text = await response.text();
   return (text ? JSON.parse(text) : null) as T;
 }
-export async function quota(id: string) {
-  if (
-    !(await db<boolean>("rpc/careline_take_quota", {
-      method: "POST",
-      body: JSON.stringify({ visitor: id }),
-    }))
-  )
-    throw new HttpError(
-      429,
-      "Daily demo conversation limit reached. Please try again tomorrow.",
-    );
-}
 export function failure(error: unknown) {
   if (error instanceof ZodError)
     return Response.json(

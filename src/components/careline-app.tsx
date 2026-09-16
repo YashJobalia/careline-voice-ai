@@ -283,12 +283,6 @@ export function CarelineApp() {
   }
   async function send(text: string) {
     if (!text.trim() || !active || sending.current) return;
-    if (messages.length >= 24) {
-      setError(
-        "This demo conversation has reached its limit. Start a new call.",
-      );
-      return;
-    }
     sending.current = true;
     const version = callVersion.current;
     setBusy(true);
@@ -309,7 +303,7 @@ export function CarelineApp() {
         proposal?: Proposal;
         registration?: Registration;
         actions: string[];
-      }>("/api/chat", "POST", { messages: updated });
+      }>("/api/chat", "POST", { messages: updated.slice(-24) });
       if (version !== callVersion.current) return;
       setMessages([...updated, { role: "assistant", content: result.text }]);
       setProposal(result.proposal);

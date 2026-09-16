@@ -13,7 +13,7 @@ Production: https://careline-sandy.vercel.app
 - Guest start, explicit registration consent, declined/tampered/cross-session confirmation rejection, patient-ID login, code format, code persistence, and cancellation verified in browser/API tests with fictional data.
 - Registration UI testing uses a mocked model response; real Supabase Auth, Edge Function, database, signed confirmations, and scheduling APIs are exercised.
 - After API funding, a real OpenAI conversation completed guest registration, symptom discussion, availability lookup, appointment proposal, confirmation, and code display. The synthetic voice sample also passed real OpenAI transcription.
-- Guest sessions are intentionally permitted, with ownership RLS and existing global/per-visitor quotas. The shared demo password is unsuitable for real patient data.
+- Guest sessions are intentionally permitted, with ownership RLS. The shared demo password is unsuitable for real patient data.
 
 ## Single-experience UI update
 
@@ -41,3 +41,7 @@ Production: https://careline-sandy.vercel.app
 - Supabase's leaked-password protection remains disabled in project settings. Row-level security is enabled. The quota table intentionally has no direct public policies; only the bounded authenticated quota function can change it.
 
 The isolated test accounts use `example.test` addresses. Their credentials live only in ignored `.env.test.local`; all test appointments were cancelled. No real patient records were used.
+
+## Request limits removed
+
+The app no longer checks the daily per-visitor or global quota for chat, transcription, or registration. The conversation UI continues beyond 24 messages using a rolling API context window. Technical payload constraints and provider limits still apply.

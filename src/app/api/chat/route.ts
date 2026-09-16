@@ -4,7 +4,6 @@ import {
   authorizeAI,
   failure,
   HttpError,
-  quota,
   sameOrigin,
   sign,
 } from "@/lib/server";
@@ -101,7 +100,6 @@ Confirm the specialty with the caller, mention both available doctors and ask pr
     let registration: Registration | undefined;
     const actions: string[] = [];
     for (let round = 0; round < 4; round++) {
-      await quota(user.id);
       const response = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
