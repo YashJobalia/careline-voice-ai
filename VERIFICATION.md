@@ -52,3 +52,6 @@ Browser verification passed typing before, during, and after a voice call, prese
 
 
 Voice warmth update: replaced OS speech synthesis with OpenAI Coral TTS. Live local speech endpoint returned 200 audio/mpeg (80,256 bytes). Browser tests passed with real PCM playback: successive hands-free turns, microphone mute/end, and typing before/during/after calls. Prompt now emphasizes specific empathy, natural doctor/time choices and timezone clarification only when needed. Physical microphone and subjective voice quality still require user listening.
+
+
+Interruption and latency update: synthetic microphone interrupted a 10-second reply; subsequent turns and mute/end passed (21 seconds). Text-chat regression passed. Real OpenAI streaming audio played in Chrome and stopped on end call. Shortened endpointing from 1.4s to 0.85s and microphone startup from 450ms to 80ms; server and supported clients stream MP3 rather than buffer the entire reply. Exact stressed/current-chest-pain prompt returned urgent guidance with no registration or appointment proposal. Initial combined browser run timed out at microphone re-enable during a page reload; isolated rerun passed. Real speaker-to-microphone echo performance remains hardware dependent.

@@ -41,7 +41,7 @@ export async function POST(req: Request) {
         502,
         "Voice playback is unavailable. You can still read and type messages.",
       );
-    return new Response(await response.arrayBuffer(), {
+    return new Response(response.body, {
       headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
     });
   } catch (error) {

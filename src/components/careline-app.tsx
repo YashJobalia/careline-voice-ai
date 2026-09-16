@@ -1,5 +1,6 @@
 "use client";
 import { useHandsFreeVoice } from "./use-hands-free-voice";
+import { speechSource } from "@/lib/stream-speech";
 import type { Registration } from "@/lib/patient";
 
 import {
@@ -124,7 +125,11 @@ export function CarelineApp() {
   }, []);
   const voice = useHandsFreeVoice({
     active: active && view === "reception",
-    paused: busy || speaking || Boolean(registration) || Boolean(proposal),
+    paused: busy,
+    onSpeechStart: () => {
+      stopSpeech();
+      setSpeaking(false);
+    },
     onAudio: transcribeTurn,
     onError: setError,
   });
@@ -204,9 +209,12 @@ export function CarelineApp() {
         throw new Error(
           "Voice playback is unavailable. You can still read and type messages.",
         );
-      const blob = await response.blob();
-      if (version !== speechVersion.current) return;
-      const url = URL.createObjectURL(blob);
+      const source = await speechSource(response, controller.signal);
+      if (version !== speechVersion.current) {
+        URL.revokeObjectURL(source.url);
+        return;
+      }
+      const url = source.url;
       speechUrl.current = url;
       const audio = new Audio(url);
       speechAudio.current = audio;
@@ -223,7 +231,7 @@ export function CarelineApp() {
           "Voice playback failed. You can still read and type messages.",
         );
       };
-      await audio.play();
+      await Promise.all([source.load(), audio.play()]);
     } catch (error) {
       if (version !== speechVersion.current) return;
       stopSpeech();

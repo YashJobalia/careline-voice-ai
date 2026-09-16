@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type Options = {
   active: boolean;
   paused: boolean;
+  onSpeechStart: () => void;
   onAudio: (audio: Blob) => Promise<void>;
   onError: (message: string) => void;
 };
@@ -101,7 +102,7 @@ export function useHandsFreeVoice(options: Options) {
       source?.disconnect();
     };
     discardRecording.current = discard;
-    // Let the loudspeaker echo decay before listening to the next turn.
+    // Echo cancellation stays enabled, including during assistant playback.
     const timer = setTimeout(() => {
       if (cancelled || !context.current) return;
       try {
@@ -170,13 +171,14 @@ export function useHandsFreeVoice(options: Options) {
               if (voiceFrames >= 6 && !hasSpeech) {
                 hasSpeech = true;
                 setHearingSpeech(true);
+                callbacks.current.onSpeechStart();
               }
             } else if (!hasSpeech) {
               voiceFrames = 0;
             }
             // A natural pause ends a turn. A long silent room only resets the local buffer.
             if (
-              (hasSpeech && now - lastVoiceAt > 1400) ||
+              (hasSpeech && now - lastVoiceAt > 850) ||
               now - beganAt > 29000
             ) {
               accepted = hasSpeech;
@@ -194,7 +196,7 @@ export function useHandsFreeVoice(options: Options) {
           "Automatic listening is unavailable in this browser. Please continue by typing.",
         );
       }
-    }, 450);
+    }, 80);
     return () => {
       clearTimeout(timer);
       discard();

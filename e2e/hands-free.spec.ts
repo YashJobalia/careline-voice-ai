@@ -52,6 +52,14 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
   let turns = 0,
     transcriptions = 0;
   await page.addInitScript(() => {
+    const originalPause = HTMLMediaElement.prototype.pause;
+    (window as unknown as { interruptions: number }).interruptions = 0;
+    HTMLMediaElement.prototype.pause = function () {
+      if (!this.paused && !this.ended && this.currentTime > 0) {
+        (window as unknown as { interruptions: number }).interruptions++;
+      }
+      return originalPause.call(this);
+    };
     const original = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices,
     );
@@ -62,8 +70,8 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
       return stream;
     };
   });
-  // Short valid PCM audio exercises real browser playback and onended.
-  const spoken = Buffer.alloc(44 + 3200);
+  // Long PCM reply must be interrupted by the synthetic microphone input.
+  const spoken = Buffer.alloc(44 + 320000);
   spoken.write("RIFF", 0);
   spoken.writeUInt32LE(spoken.length - 8, 4);
   spoken.write("WAVEfmt ", 8);
@@ -75,7 +83,7 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
   spoken.writeUInt16LE(2, 32);
   spoken.writeUInt16LE(16, 34);
   spoken.write("data", 36);
-  spoken.writeUInt32LE(3200, 40);
+  spoken.writeUInt32LE(320000, 40);
   await page.route("**/api/speech", (r) =>
     r.fulfill({ contentType: "audio/wav", body: spoken }),
   );
@@ -112,6 +120,11 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
     await expect
       .poll(() => turns, { timeout: 25000 })
       .toBeGreaterThanOrEqual(2);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { interruptions: number }).interruptions,
+      ),
+    ).toBeGreaterThan(0);
     await page.getByRole("button", { name: "Mute microphone" }).click();
     expect(
       await page.evaluate(() =>
