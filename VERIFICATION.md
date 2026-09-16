@@ -45,3 +45,7 @@ The isolated test accounts use `example.test` addresses. Their credentials live 
 ## Request limits removed
 
 The app no longer checks the daily per-visitor or global quota for chat, transcription, or registration. The conversation UI continues beyond 24 messages using a rolling API context window. Technical payload constraints and provider limits still apply.
+
+## Independent text chat
+
+Browser verification passed typing before, during, and after a voice call, preserving the same transcript. Text-only replies do not turn on microphone capture or speech playback.

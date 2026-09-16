@@ -192,12 +192,9 @@ export function CarelineApp() {
     setBusy(false);
     sending.current = false;
     window.speechSynthesis?.cancel();
-    setProposal(undefined);
-    setRegistration(undefined);
-    setChoices([]);
   }
   async function startCall() {
-    endCall();
+    voice.stop();
     setBusy(true);
     setError("");
     try {
@@ -205,10 +202,14 @@ export function CarelineApp() {
       await voice.start();
       setActive(true);
       setSeconds(0);
-      const hello = user
-        ? "Welcome back to CareLine. What brings you in today?"
-        : greeting;
-      setMessages([{ role: "assistant", content: hello }]);
+      const hello = messages.length
+        ? "I?m listening. We can continue our conversation by voice."
+        : user
+          ? "Welcome back to CareLine. What brings you in today?"
+          : greeting;
+      setMessages((v) =>
+        v.length ? v : [{ role: "assistant", content: hello }],
+      );
       setChoices([]);
       setNotice("");
       setActions([]);
@@ -221,6 +222,9 @@ export function CarelineApp() {
   }
   function resetConversation() {
     endCall();
+    setProposal(undefined);
+    setRegistration(undefined);
+    setChoices([]);
     setMessages([]);
     setError("");
     setNotice("");
@@ -272,6 +276,8 @@ export function CarelineApp() {
       await api("/api/auth", "POST", { action: "signout" });
       endCall();
       setUser(null);
+      setMessages([]);
+      setProposal(undefined);
       setBookings([]);
       setCredentials(undefined);
       setRegistration(undefined);
@@ -282,7 +288,7 @@ export function CarelineApp() {
     }
   }
   async function send(text: string) {
-    if (!text.trim() || !active || sending.current) return;
+    if (!text.trim() || sending.current) return;
     sending.current = true;
     const version = callVersion.current;
     setBusy(true);
@@ -309,7 +315,7 @@ export function CarelineApp() {
       setProposal(result.proposal);
       setRegistration(result.registration);
       setActions(result.actions);
-      speak(result.text);
+      if (active) speak(result.text);
     } catch (e) {
       if (version === callVersion.current) setError((e as Error).message);
     } finally {
@@ -335,7 +341,8 @@ export function CarelineApp() {
       const text = `Your appointment is confirmed. Your appointment code is ${confirmed.code}. You can find it in My appointments.`;
       setMessages((v) => [...v, { role: "assistant", content: text }]);
       setNotice(`Appointment confirmed. Code: ${confirmed.code}`);
-      speak(text.replace(confirmed.code, confirmed.code.split("").join(" ")));
+      if (active)
+        speak(text.replace(confirmed.code, confirmed.code.split("").join(" ")));
     } catch (e) {
       setError((e as Error).message);
       void refresh().catch(() => {});
@@ -399,7 +406,7 @@ export function CarelineApp() {
         ? "Your demo account is created. Please sign in using the patient ID and password shown on screen."
         : "Your demo patient account is created. What brings you in today?";
       setMessages((v) => [...v, { role: "assistant", content: text }]);
-      speak(text);
+      if (active) speak(text);
       if (result.user) await refreshBookings();
     } catch (e) {
       setError((e as Error).message);
@@ -776,8 +783,7 @@ export function CarelineApp() {
                         </span>
                         <h3>We’re here to listen.</h3>
                         <p>
-                          Start a conversation and your transcript will appear
-                          here.
+                          Type a message below, or start a voice conversation.
                         </p>
                         <div className="example-query">
                           “I’d like to see a dermatologist.”
@@ -826,20 +832,15 @@ export function CarelineApp() {
                   >
                     <input
                       aria-label="Message the receptionist"
-                      placeholder={
-                        active
-                          ? "Or type your message…"
-                          : "Start a conversation to begin…"
-                      }
+                      placeholder="Type your message anytime?"
                       value={input}
                       maxLength={1000}
-                      disabled={!active || busy}
                       onChange={(e) => setInput(e.target.value)}
                     />
                     <Button
                       size="icon"
                       aria-label="Send message"
-                      disabled={!active || busy || !input.trim()}
+                      disabled={busy || !input.trim()}
                     >
                       <Send size={17} />
                     </Button>
