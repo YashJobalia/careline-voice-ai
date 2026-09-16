@@ -12,7 +12,7 @@ A Next.js portfolio demo for a fictional multispecialty clinic. Browser voice an
 - Unique appointment references such as AB123, displayed and spoken after confirmation.
 - Cardiology, Otorhinolaryngology (ENT), and Dermatology; two fictional physicians per department.
 - A single conversational receptionist powered by OpenAI tool calling.
-- Hands-free microphone with local speech/pause detection, automatic turn submission, browser speech playback, live transcript, and typed fallback.
+- Hands-free microphone with local speech/pause detection, automatic turn submission, OpenAI Coral voice playback, live transcript, and typed fallback.
 - Database-backed availability, explicit confirmation, persistent appointments, and cancellation.
 - Row-level security isolates appointments by account. A partial unique index prevents double booking.
 - No app-imposed daily request quota or conversation-turn cutoff. Recent messages are sent as a rolling context window. Provider billing, rate limits, and technical request-size limits still apply.
@@ -63,7 +63,7 @@ Public users can read clinic data and sanitized slot availability, but cannot re
 
 Temporary anonymous auth sessions exist before registration, but contain no patient profile. Name/date-of-birth are not login credentials. Appointment codes are references, not authentication tokens. Codes are unique and never reused; this format supports 676,000 lifetime references, after which booking fails rather than reusing a code.
 
-Voice input uses browser MediaRecorder and OpenAI transcription; responses use browser speech synthesis. After one microphone permission prompt, local voice activity detection submits speech after a roughly 1.4-second pause and listens again after each reply. Silence is not sent for transcription. Listening pauses during replies and confirmation screens to prevent echo. Mute or end the call to stop microphone capture. This is hands-free turn-taking, not full-duplex realtime audio; interrupting a spoken reply is not implemented. Text input is available throughout. Transcripts remain in memory; audio is not stored in the database. A funded OpenAI API account is required; the app does not silently fall back to scripted replies.
+Voice input uses browser MediaRecorder and OpenAI transcription; responses use OpenAI gpt-4o-mini-tts with the Coral voice and warm conversational delivery. After one microphone permission prompt, local voice activity detection submits speech after a roughly 1.4-second pause and listens again after each reply. Silence is not sent for transcription. Listening pauses during replies and confirmation screens to prevent echo. Mute or end the call to stop microphone capture. This is hands-free turn-taking, not full-duplex realtime audio; interrupting a spoken reply is not implemented. Text input is available throughout. Transcripts remain in memory; audio is not stored in the database. A funded OpenAI API account is required; the app does not silently fall back to scripted replies.
 
 ## Architecture
 

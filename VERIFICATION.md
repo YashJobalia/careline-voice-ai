@@ -49,3 +49,6 @@ The app no longer checks the daily per-visitor or global quota for chat, transcr
 ## Independent text chat
 
 Browser verification passed typing before, during, and after a voice call, preserving the same transcript. Text-only replies do not turn on microphone capture or speech playback.
+
+
+Voice warmth update: replaced OS speech synthesis with OpenAI Coral TTS. Live local speech endpoint returned 200 audio/mpeg (80,256 bytes). Browser tests passed with real PCM playback: successive hands-free turns, microphone mute/end, and typing before/during/after calls. Prompt now emphasizes specific empathy, natural doctor/time choices and timezone clarification only when needed. Physical microphone and subjective voice quality still require user listening.

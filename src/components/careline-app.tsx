@@ -105,6 +105,23 @@ export function CarelineApp() {
   const callVersion = useRef(0);
   const sending = useRef(false);
   const speechVersion = useRef(0);
+  const speechAbort = useRef<AbortController | null>(null);
+  const speechAudio = useRef<HTMLAudioElement | null>(null);
+  const speechUrl = useRef<string | null>(null);
+  const stopSpeech = useCallback(() => {
+    speechVersion.current++;
+    speechAbort.current?.abort();
+    speechAbort.current = null;
+    if (speechAudio.current) {
+      speechAudio.current.onended = null;
+      speechAudio.current.onerror = null;
+      speechAudio.current.pause();
+      speechAudio.current.removeAttribute("src");
+      speechAudio.current = null;
+    }
+    if (speechUrl.current) URL.revokeObjectURL(speechUrl.current);
+    speechUrl.current = null;
+  }, []);
   const voice = useHandsFreeVoice({
     active: active && view === "reception",
     paused: busy || speaking || Boolean(registration) || Boolean(proposal),
@@ -162,26 +179,61 @@ export function CarelineApp() {
   useEffect(
     () => () => {
       callVersion.current++;
-      window.speechSynthesis?.cancel();
+      stopSpeech();
     },
-    [],
+    [stopSpeech],
   );
-  function speak(text: string) {
-    const version = ++speechVersion.current;
-    window.speechSynthesis?.cancel();
-    if (muted || !("speechSynthesis" in window)) {
+  async function speak(text: string) {
+    stopSpeech();
+    if (muted) {
       setSpeaking(false);
       return;
     }
+    const version = speechVersion.current;
+    const controller = new AbortController();
+    speechAbort.current = controller;
     setSpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text.replace(/[*#]/g, ""));
-    utterance.rate = 1;
-    const done = () => {
-      if (version === speechVersion.current) setSpeaking(false);
-    };
-    utterance.onend = done;
-    utterance.onerror = done;
-    window.speechSynthesis.speak(utterance);
+    try {
+      const response = await fetch("/api/speech", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text.replace(/[*#]/g, "") }),
+        signal: controller.signal,
+      });
+      if (!response.ok)
+        throw new Error(
+          "Voice playback is unavailable. You can still read and type messages.",
+        );
+      const blob = await response.blob();
+      if (version !== speechVersion.current) return;
+      const url = URL.createObjectURL(blob);
+      speechUrl.current = url;
+      const audio = new Audio(url);
+      speechAudio.current = audio;
+      audio.onended = () => {
+        if (version !== speechVersion.current) return;
+        stopSpeech();
+        setSpeaking(false);
+      };
+      audio.onerror = () => {
+        if (version !== speechVersion.current) return;
+        stopSpeech();
+        setSpeaking(false);
+        setError(
+          "Voice playback failed. You can still read and type messages.",
+        );
+      };
+      await audio.play();
+    } catch (error) {
+      if (version !== speechVersion.current) return;
+      stopSpeech();
+      setSpeaking(false);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Could not play the voice response.",
+      );
+    }
   }
   function endCall() {
     voice.stop();
@@ -191,7 +243,7 @@ export function CarelineApp() {
     setSpeaking(false);
     setBusy(false);
     sending.current = false;
-    window.speechSynthesis?.cancel();
+    stopSpeech();
   }
   async function startCall() {
     voice.stop();
@@ -203,7 +255,7 @@ export function CarelineApp() {
       setActive(true);
       setSeconds(0);
       const hello = messages.length
-        ? "I?m listening. We can continue our conversation by voice."
+        ? "I'm listening. We can continue our conversation by voice."
         : user
           ? "Welcome back to CareLine. What brings you in today?"
           : greeting;
@@ -296,7 +348,7 @@ export function CarelineApp() {
     setInput("");
     setProposal(undefined);
     setChoices([]);
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     setSpeaking(false);
     const updated = [
       ...messages,
@@ -442,16 +494,16 @@ export function CarelineApp() {
     { id: "account" as const, label: "My account", icon: UserRound },
   ];
   const status = voice.hearingSpeech
-    ? "I?m listening"
+    ? "I'm listening"
     : busy
-      ? "Thinking?"
+      ? "Thinking..."
       : speaking
         ? "Your receptionist is speaking"
         : active
           ? registration || proposal
             ? "Review and confirm below"
             : voice.listening
-              ? "Listening ? go ahead"
+              ? "Listening - go ahead"
               : "Microphone paused"
           : "Your receptionist is ready";
   return (
@@ -704,7 +756,7 @@ export function CarelineApp() {
                             }
                             onClick={() => {
                               setMuted((v) => !v);
-                              window.speechSynthesis?.cancel();
+                              stopSpeech();
                               setSpeaking(false);
                             }}
                           >

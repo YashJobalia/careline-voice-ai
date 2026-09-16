@@ -115,4 +115,4 @@ export function practiceSlots(now = new Date()): Slot[] {
   return slots;
 }
 export const greeting =
-  "Hello, welcome to CareLine. I can help you find a doctor and book an appointment. For this demo, please use fictional details. Would you like me to help you create a patient account, or do you have a clinic question?";
+  "Hi, welcome to CareLine. I'm your AI receptionist. How can I help you today?";

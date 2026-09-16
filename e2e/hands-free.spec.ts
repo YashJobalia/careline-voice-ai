@@ -52,17 +52,6 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
   let turns = 0,
     transcriptions = 0;
   await page.addInitScript(() => {
-    Object.defineProperty(window, "speechSynthesis", {
-      value: {
-        cancel() {},
-        speak(u: SpeechSynthesisUtterance) {
-          setTimeout(
-            () => u.onend?.(new Event("end") as SpeechSynthesisEvent),
-            30,
-          );
-        },
-      },
-    });
     const original = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices,
     );
@@ -73,6 +62,23 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
       return stream;
     };
   });
+  // Short valid PCM audio exercises real browser playback and onended.
+  const spoken = Buffer.alloc(44 + 3200);
+  spoken.write("RIFF", 0);
+  spoken.writeUInt32LE(spoken.length - 8, 4);
+  spoken.write("WAVEfmt ", 8);
+  spoken.writeUInt32LE(16, 16);
+  spoken.writeUInt16LE(1, 20);
+  spoken.writeUInt16LE(1, 22);
+  spoken.writeUInt32LE(16000, 24);
+  spoken.writeUInt32LE(32000, 28);
+  spoken.writeUInt16LE(2, 32);
+  spoken.writeUInt16LE(16, 34);
+  spoken.write("data", 36);
+  spoken.writeUInt32LE(3200, 40);
+  await page.route("**/api/speech", (r) =>
+    r.fulfill({ contentType: "audio/wav", body: spoken }),
+  );
   await page.route("**/api/session", (route) =>
     route.fulfill({ json: { ok: true, guest: true } }),
   );
