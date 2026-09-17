@@ -7,6 +7,7 @@ export type ActionActivity = {
 };
 
 const labels: Record<string, string> = {
+  message_doctor: "Leave a message for the doctor",
   reset_password: "Request a password reset",
   get_capabilities: "Check account permissions",
   lookup_account: "Look up an account",

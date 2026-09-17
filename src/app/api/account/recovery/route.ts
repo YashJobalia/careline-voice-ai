@@ -1,3 +1,4 @@
+import { passwordSchema } from "@/lib/password";
 import { cookies } from "next/headers";
 import { createHash } from "node:crypto";
 import { z } from "zod";
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
     }
     if (body.action !== "complete")
       throw new HttpError(400, "Unknown recovery action.");
-    const password = z.string().min(10).max(128).parse(body.password);
+    const password = passwordSchema.parse(body.password);
     if (password !== body.confirmPassword)
       throw new HttpError(400, "Passwords do not match.");
     const jar = await cookies();

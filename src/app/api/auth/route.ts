@@ -1,3 +1,4 @@
+import { passwordSchema } from "@/lib/password";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { makeReceipt } from "@/lib/action-receipt";
@@ -40,7 +41,7 @@ export async function POST(req: Request) {
     const supabase = await supabaseServer();
     if (p.action === "signup") {
       const details = patientDetails.parse(raw);
-      const password = z.string().min(10).max(128).parse(raw.password);
+      const password = passwordSchema.parse(raw.password);
       if (raw.confirmPassword !== undefined && password !== raw.confirmPassword)
         throw new HttpError(400, "Passwords do not match.");
       const visitor = await authorizeAI();
@@ -53,7 +54,7 @@ export async function POST(req: Request) {
     if (p.action === "password") {
       const visitor = await session();
       if (visitor.guest) throw new HttpError(401, "Sign in first.");
-      const password = z.string().min(10).max(128).parse(raw.password);
+      const password = passwordSchema.parse(raw.password);
       if (raw.confirmPassword !== undefined && password !== raw.confirmPassword)
         throw new HttpError(400, "Passwords do not match.");
       const currentPassword = z

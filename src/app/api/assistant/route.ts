@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const p = z
       .object({
         message: z.string().trim().min(1).max(3000),
-        pendingToken: z.string().max(10000).optional(),
+        pendingToken: z.string().optional(),
         replyLanguage: z.enum(replyLanguages).default("English"),
       })
       .parse(await req.json());

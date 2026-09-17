@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { patientDetails } from "./patient";
+import { patientFields } from "./patient";
+
+import { phoneSchema, normalizeContact } from "./phone-number";
 
 export const navigation = z.object({
   page: z.enum([
@@ -31,21 +33,19 @@ export const navigation = z.object({
   behindScenes: z.boolean().optional(),
 });
 export type Navigation = z.infer<typeof navigation>;
-export const accountLookup = z
-  .object({
-    email: z.string().trim().email().max(254).optional(),
-    phone: z
-      .string()
-      .trim()
-      .transform((value) => value.replace(/[\s().-]/g, ""))
-      .pipe(z.string().regex(/^\+[1-9][0-9]{7,14}$/))
-      .optional(),
-    originalRequest: z.string().trim().min(1).max(1000).optional(),
-  })
-  .refine(
-    (value) => Boolean(value.email) !== Boolean(value.phone),
-    "Provide exactly one full email or international phone number.",
-  );
+export const accountLookup = z.preprocess(
+  normalizeContact,
+  z
+    .object({
+      email: z.string().trim().email().max(254).optional(),
+      phone: phoneSchema.optional(),
+      originalRequest: z.string().trim().min(1).max(1000).optional(),
+    })
+    .refine(
+      (value) => Boolean(value.email) !== Boolean(value.phone),
+      "Provide exactly one full email or international phone number.",
+    ),
+);
 export const signInRequest = z.object({
   email: z.string().trim().email().max(254).optional(),
   mode: z.enum(["signin", "signup"]).default("signin"),
@@ -64,36 +64,52 @@ export type Account = {
   guest?: boolean;
 };
 export const visitNotes = z.object({
-  concern: z.string().trim().min(3).max(600),
-  duration: z.string().trim().min(1).max(200),
-  severity: z.string().trim().min(1).max(200),
-  context: z.string().trim().max(800).default(""),
+  concern: z.string().trim().min(3),
+  duration: z.string().trim().min(1),
+  severity: z.string().trim().min(1),
+  context: z.string().trim().default(""),
 });
-export const mutation = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("reset_password"),
-    email: z.string().trim().email().max(254),
-  }),
-  patientDetails.extend({ action: z.literal("register") }),
-  z.object({ action: z.literal("book"), slotId: z.uuid(), notes: visitNotes }),
-  z.object({ action: z.literal("reschedule"), id: z.uuid(), slotId: z.uuid() }),
-  z.object({
-    action: z.literal("cancel"),
-    id: z.uuid(),
-    reason: z.string().max(600).default(""),
-  }),
-  z.object({
-    action: z.literal("request_reschedule"),
-    id: z.uuid(),
-    reason: z.string().max(600).default(""),
-  }),
-  patientDetails
-    .omit({ email: true })
-    .extend({ action: z.literal("update_profile") }),
-  z.object({ action: z.literal("clear_history") }),
-  z.object({ action: z.literal("change_password") }),
-  z.object({ action: z.literal("signout") }),
-]);
+export const mutation = z.preprocess(
+  normalizeContact,
+  z.discriminatedUnion("action", [
+    z.object({
+      action: z.literal("reset_password"),
+      email: z.string().trim().email().max(254),
+    }),
+    patientFields.extend({ action: z.literal("register") }),
+    z.object({
+      action: z.literal("book"),
+      slotId: z.uuid(),
+      notes: visitNotes,
+    }),
+    z.object({
+      action: z.literal("reschedule"),
+      id: z.uuid(),
+      slotId: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("cancel"),
+      id: z.uuid(),
+      reason: z.string().max(600).default(""),
+    }),
+    z.object({
+      action: z.literal("request_reschedule"),
+      id: z.uuid(),
+      reason: z.string().max(600).default(""),
+    }),
+    patientFields
+      .omit({ email: true })
+      .extend({ action: z.literal("update_profile") }),
+    z.object({
+      action: z.literal("message_doctor"),
+      id: z.uuid(),
+      summary: z.string().trim().min(3),
+    }),
+    z.object({ action: z.literal("clear_history") }),
+    z.object({ action: z.literal("change_password") }),
+    z.object({ action: z.literal("signout") }),
+  ]),
+);
 export type Mutation = z.infer<typeof mutation>;
 export type PendingAction = {
   token: string;

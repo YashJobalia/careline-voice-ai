@@ -3,6 +3,7 @@ import { loadEnvFile } from "node:process";
 import { WebSocketServer, WebSocket } from "ws";
 import { z } from "zod";
 import { validTwilioSignature } from "../src/lib/phone";
+import { explicitGoodbye, idleAction } from "../src/lib/call-lifecycle";
 import {
   runConversation,
   type ConversationServices,
@@ -73,7 +74,32 @@ sockets.on("connection", (ws) => {
   let interrupted = false,
     version = 0,
     abort: AbortController | undefined;
+  let lastActivity = Date.now(),
+    warned = false,
+    busy = false,
+    ending = false;
+  const endCall = () => {
+    if (ending) return;
+    ending = true;
+    version++;
+    abort?.abort();
+    if (ws.readyState === WebSocket.OPEN)
+      ws.send(JSON.stringify({ type: "end" }));
+  };
+  const idleTimer = setInterval(() => {
+    if (!callId || ending) return;
+    const action = idleAction(Date.now() - lastActivity, warned, busy);
+    if (action === "end") endCall();
+    if (action === "check_in") {
+      warned = true;
+      say(
+        "Are you still there? We can pause here, and you can call back when you are ready.",
+      );
+    }
+  }, 1000);
   const say = (text: string) => {
+    // Allow playback time before counting silence on the relay channel.
+    lastActivity = Date.now() + Math.min(30000, text.split(/\s+/).length * 450);
     if (ws.readyState === WebSocket.OPEN)
       ws.send(
         JSON.stringify({
@@ -86,6 +112,7 @@ sockets.on("connection", (ws) => {
       );
   };
   ws.on("close", () => {
+    clearInterval(idleTimer);
     version++;
     abort?.abort();
     history = [];
@@ -106,15 +133,22 @@ sockets.on("connection", (ws) => {
         return;
       }
       callId = event.callSid;
+      lastActivity = Date.now() + 10000;
       return;
     }
     if (!callId) {
       ws.close(1008);
       return;
     }
+    if (ending) return;
+    if (event.type === "prompt" || event.type === "interrupt") {
+      lastActivity = Date.now();
+      warned = false;
+    }
     if (event.type === "interrupt") {
       interrupted = true;
       version++;
+      busy = false;
       abort?.abort();
       if (history.at(-1)?.role === "assistant")
         history[history.length - 1] = {
@@ -127,9 +161,14 @@ sockets.on("connection", (ws) => {
     }
     if (event.type !== "prompt" || !event.last || !event.voicePrompt.trim())
       return;
+    if (explicitGoodbye(event.voicePrompt)) {
+      endCall();
+      return;
+    }
     abort?.abort();
     abort = new AbortController();
     const current = ++version;
+    busy = true;
     history = [
       ...history,
       { role: "user" as const, content: event.voicePrompt },
@@ -185,6 +224,8 @@ sockets.on("connection", (ws) => {
         say(
           "I couldn't complete that request. Please try again or use the CareLine website.",
         );
+    } finally {
+      if (current === version) busy = false;
     }
   });
 });

@@ -30,7 +30,9 @@ export function phoneTwiml(websocketUrl: string) {
     interruptible: "speech",
     preemptible: true,
     welcomeGreeting:
-      "Welcome to CareLine, a fictional clinic with an AI receptionist. I can answer clinic questions and check times. Please use our website to confirm appointments. How can I help?",
+      "Hello, and welcome to CareLine. I'm Mira, your AI receptionist for this demo clinic. How can I help you today?",
   });
+  response.say("Thank you for calling CareLine. Take care, and goodbye.");
+  response.hangup();
   return response.toString();
 }

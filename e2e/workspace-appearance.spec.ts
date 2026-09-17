@@ -61,7 +61,8 @@ test("live account preference crosses browser sessions and rejects invalid write
     await page.goto("/");
     await page.getByRole("button", { name: "Settings", exact: true }).click();
     await expect(page.getByRole("radio", { name: /Dark/ })).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Alex" })).toBeVisible();
+    await expect(page.locator(".user-pill")).toContainText("Alex");
+    await expect(page.getByRole("radio", { name: /Dark/ })).toBeEnabled();
     await page.getByRole("radio", { name: /Dark/ }).check();
     await expect(page.getByText("Saved to your account and this browser.")).toBeVisible();
     const otherPage = await second.newPage();

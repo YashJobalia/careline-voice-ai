@@ -57,7 +57,7 @@ export async function POST(req: Request) {
             },
             turn_detection: {
               type: "semantic_vad",
-              eagerness: "auto",
+              eagerness: "high",
               create_response: true,
               interrupt_response: true,
             },

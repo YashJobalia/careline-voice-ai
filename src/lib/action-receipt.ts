@@ -11,6 +11,7 @@ export function makeReceipt(
   },
 ): ActionReceipt {
   const titles: Record<Mutation["action"], string> = {
+    message_doctor: "Message left for doctor",
     reset_password: "Password reset requested",
     register: "Account created",
     book: "Appointment booked",
@@ -44,16 +45,18 @@ export function makeReceipt(
       value: formatSlot(context.previousSlot),
     });
   const summary =
-    action === "request_reschedule"
-      ? "The request is visible in the patient's appointments. The existing slot stays reserved. No email or SMS was sent."
-      : action === "update_profile"
-        ? "Your profile changes have been saved."
-        : action === "change_password"
-          ? "Save your new password privately before leaving this page."
-          : action === "cancel"
-            ? "This appointment is cancelled and its slot has been released."
-            : action === "book" || action === "reschedule"
-              ? "Your appointment is confirmed. You can find it in My appointments."
-              : titles[action] + ".";
+    action === "message_doctor"
+      ? "Saved in the appointment notes for the doctor to review. No email or SMS was sent; this is not an urgent contact channel."
+      : action === "request_reschedule"
+        ? "The request is visible in the patient's appointments. The existing slot stays reserved. No email or SMS was sent."
+        : action === "update_profile"
+          ? "Your profile changes have been saved."
+          : action === "change_password"
+            ? "Save your new password privately before leaving this page."
+            : action === "cancel"
+              ? "This appointment is cancelled and its slot has been released."
+              : action === "book" || action === "reschedule"
+                ? "Your appointment is confirmed. You can find it in My appointments."
+                : titles[action] + ".";
   return { id: context.id, action, title: titles[action], summary, fields };
 }

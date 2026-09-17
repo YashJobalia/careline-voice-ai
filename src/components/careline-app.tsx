@@ -1,4 +1,5 @@
 "use client";
+import { newPasswordAttributes, PASSWORD_HINT } from "@/lib/password";
 import { useHandsFreeVoice } from "./use-hands-free-voice";
 import { ConversationLab } from "./conversation-lab";
 import { isBackchannel } from "@/lib/voice-activity";
@@ -1412,11 +1413,12 @@ export function CarelineApp() {
                 authMode === "signin" ? "current-password" : "new-password"
               }
               required
-              minLength={8}
-              maxLength={128}
-              placeholder="At least 8 characters"
+              {...(authMode === "signin"
+                ? { minLength: 1, maxLength: 128 }
+                : newPasswordAttributes)}
             />
           </label>
+          {authMode !== "signin" && <small>{PASSWORD_HINT}</small>}
           {authError && (
             <p className="form-error" role="alert">
               {authError}

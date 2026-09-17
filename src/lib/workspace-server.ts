@@ -89,6 +89,12 @@ async function accessibleVisit(user: Session, id: string, clinic = false) {
 }
 async function validate(user: Session, p: Mutation) {
   if (p.action === "reset_password") return;
+  if (p.action === "message_doctor") {
+    if (user.guest) throw new HttpError(401, "Sign in to leave a message.");
+    if (!(await visits(user)).some((v) => v.id === p.id))
+      throw new HttpError(403, "Choose one of your own appointments.");
+    return;
+  }
   if (p.action === "register") {
     if (!user.guest) throw new HttpError(409, "You already have an account.");
     return;
@@ -126,8 +132,7 @@ export async function registerAccount(
       process.env.SUPABASE_SERVICE_ROLE_KEY,
       { auth: { persistSession: false, autoRefreshToken: false } },
     );
-    const generated =
-      password || randomBytes(20).toString("base64url") + "aA1!";
+    const generated = password || randomBytes(9).toString("base64url") + "aA1!";
     const patientId = "CL" + visitor.id.replaceAll("-", "").toUpperCase();
     const { error: insertError } = await admin
       .from("careline_patients")
@@ -219,7 +224,7 @@ export async function workspaceAction(
     .object({
       action: z.string(),
       args: z.unknown().optional(),
-      token: z.string().max(10000).optional(),
+      token: z.string().optional(),
     })
     .parse(raw);
   const args = envelope.args || {};
@@ -394,6 +399,7 @@ export async function workspaceAction(
     await validate(user, details);
     const summaries: Partial<Record<Mutation["action"], string>> = {
       update_profile: "Review account changes",
+      message_doctor: "Review message for your appointment doctor",
       change_password: "Generate a new password",
       reset_password: "Request a password reset email",
       register: "Create your patient account",
@@ -412,6 +418,10 @@ export async function workspaceAction(
         user.role === "doctor",
       );
       summary = `${details.action === "cancel" ? "Cancel" : "Request rescheduling for"} ${visit.appointment_code}: ${doctors.find((d) => d.id === visit.slot.doctor_id)?.name}, ${formatSlot(visit.slot)} (America/Chicago)`;
+    }
+    if (details.action === "message_doctor") {
+      const visit = (await visits(user)).find((v) => v.id === details.id)!;
+      summary = `Leave a message for ${doctors.find((d) => d.id === visit.slot.doctor_id)?.name} about ${visit.appointment_code}`;
     }
     if (details.action === "book" || details.action === "reschedule") {
       const slot = (await availableSlots()).find(
@@ -512,6 +522,18 @@ export async function workspaceAction(
       message: `Appointment confirmed with ${doctors.find((d) => d.id === targetSlot!.doctor_id)?.name}, ${formatSlot(targetSlot!)} (America/Chicago). Reference ${rows[0].appointment_code}.`,
     };
   }
+  if (p.action === "message_doctor") {
+    await db("rpc/careline_message_doctor", {
+      method: "POST",
+      body: JSON.stringify({ booking_id: p.id, message_summary: p.summary }),
+    });
+    return {
+      ok: true,
+      receipt,
+      message:
+        "Your message is saved in the appointment notes and visible in the doctor panel. This does not confirm it has been read. No email or SMS was sent.",
+    };
+  }
   if (p.action === "reschedule") {
     const old = await accessibleVisit(user, p.id);
     await db("rpc/careline_reschedule_booking", {
@@ -547,7 +569,7 @@ export async function workspaceAction(
       }),
     });
   } else if (p.action === "change_password") {
-    const password = randomBytes(18).toString("base64url") + "aA1!";
+    const password = randomBytes(9).toString("base64url") + "aA1!";
     const { error } = await (
       await supabaseServer()
     ).auth.updateUser({ password });

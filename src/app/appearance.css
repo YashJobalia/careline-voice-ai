@@ -1,39 +1,560 @@
-/* Shared appearance tokens. The call panel keeps its own contrasting palette. */
+﻿/* CareLine appearance: warm daylight and a calm charcoal night palette. */
 :root {
   color-scheme: light;
+  --background: #f5f4f0;
+  --card: #ffffff;
+  --surface-soft: #f0f3f2;
+  --surface-hover: #e9efec;
+  --foreground: #202f32;
+  --muted: #5e7073;
+  --primary: #22695c;
+  --primary-ink: #ffffff;
+  --border: #dce3df;
+  --accent: #e2eee8;
+  --accent-ink: #245d50;
+  --input: #fafbf9;
+  --chrome: #fafaf7;
+  --shadow: 0 6px 24px #22372e06, 0 1px 3px #22372e04;
+  --voice-surface: radial-gradient(ellipse at 35% 30%, #f0f7f2, #dcebe5);
+  --voice-ink: #21473e;
+  --voice-muted: #496a5f;
+  --voice-control: #ffffff80;
+  --voice-border: #aecbbe;
+  --voice-button: #22695c;
+  --voice-button-ink: #ffffff;
+  --orb: radial-gradient(circle at 30% 20%, #ffffff, #c2ded0 80%);
+  --orb-ink: #2c6656;
+  --success: #e3f1e9;
+  --success-ink: #266143;
+  --warning: #fbf3df;
+  --warning-ink: #785716;
+  --danger: #fae9e6;
+  --danger-ink: #9b4038;
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #101a17;
-  --card: #18251f;
-  --foreground: #e2eee6;
-  --muted: #a5b8ab;
-  --primary: #36765d;
-  --border: #35483c;
-  --accent: #263e30;
+  --background: #111820;
+  --card: #1a242e;
+  --surface-soft: #202d38;
+  --surface-hover: #293b47;
+  --foreground: #e7eeef;
+  --muted: #a4b5bd;
+  --primary: #8cd3be;
+  --primary-ink: #142d29;
+  --border: #33434f;
+  --accent: #243e3e;
+  --accent-ink: #a3dfca;
+  --input: #15202a;
+  --chrome: #151e27;
+  --shadow: 0 10px 30px #00000016, 0 1px 3px #00000012;
+  --voice-surface: radial-gradient(ellipse at 35% 30%, #25494d, #182f39);
+  --voice-ink: #edf7f3;
+  --voice-muted: #b6cfc9;
+  --voice-control: #ffffff08;
+  --voice-border: #49636a;
+  --voice-button: #b4e4cf;
+  --voice-button-ink: #163b31;
+  --orb: radial-gradient(circle at 30% 20%, #e1f5e9, #8bc7b1 80%);
+  --orb-ink: #214f44;
+  --success: #243e35;
+  --success-ink: #b2dfc6;
+  --warning: #393527;
+  --warning-ink: #e7d49f;
+  --danger: #432f32;
+  --danger-ink: #f5b7ad;
 }
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.careline-workspace {
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+.careline-workspace .sidebar {
+  background: var(--chrome);
+  border-color: var(--border);
+}
+.careline-workspace .topbar {
+  background: var(--chrome);
+  border-color: var(--border);
+}
+.brand {
+  color: var(--foreground);
+  letter-spacing: -0.9px;
+}
+.brand-mark {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+:is(
+  .brand-subtitle,
+  .sidebar-label,
+  .sidebar-bottom,
+  .breadcrumb,
+  .user-pill,
+  .demo-badge,
+  .heading-seal,
+  .workspace-footer
+) {
+  color: var(--muted);
+}
+.breadcrumb strong {
+  color: var(--foreground);
+}
+.careline-workspace .nav-item {
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.careline-workspace .nav-item:hover {
+  background: var(--surface-hover);
+  color: var(--foreground);
+}
+.careline-workspace .nav-item.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+:is(.avatar-small, .doctor-initials, .sidebar-note) {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.page-heading h1 {
+  font-weight: 600;
+  letter-spacing: -1.4px;
+}
+.page-heading .eyebrow {
+  color: var(--primary);
+}
+.page-heading p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.workspace-main
+  :is(
+    .workspace-panel,
+    .workspace-voice,
+    .behind-scenes,
+    .pending-card,
+    .credentials-card
+  ),
+:is(.workspace-dialog, .conversation-lab, .pwa-ios p) {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: var(--shadow);
+}
+.workspace-main :is(.workspace-panel, .workspace-voice, .behind-scenes) {
+  border-radius: 22px;
+}
+.workspace-voice:not(.compact-voice) {
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.workspace-main
+  :is(
+    .workspace-panel p,
+    .behind-scenes p,
+    .muted-copy,
+    .empty-state,
+    .composer-hint,
+    .workspace-transcript .workspace-toolbar small
+  ) {
+  color: var(--muted);
+}
+.workspace-main :is(h2, h3) {
+  color: var(--foreground);
+  letter-spacing: -0.4px;
+}
+.workspace-main
+  :is(
+    .workspace-form label,
+    .account-role,
+    .reference-code,
+    .visit-notes dt,
+    .pending-card dt,
+    .action-receipt dt,
+    .calendar-weekday
+  ) {
+  color: var(--muted);
+}
+.workspace-main .workspace-form {
+  background: transparent;
+}
+.workspace-main :is(input, textarea, select),
+.workspace-dialog :is(input, textarea, select) {
+  background: var(--input);
+  color: var(--foreground);
+  border-color: var(--border);
+  border-radius: 11px;
+  min-height: 44px;
+  font: inherit;
+  box-shadow: inset 0 1px 2px #00000003;
+}
+.workspace-main :is(input, textarea)::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.careline-workspace :is(button, a, input, textarea, select):focus-visible,
+.workspace-main :is(button, input, textarea, select):focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+.workspace-main button:not(.primary-action):not(.nav-item):not(.user-pill) {
+  color: var(--foreground);
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 11px;
+}
+.workspace-main
+  button:not(.primary-action):not(.nav-item):not(.user-pill):hover:not(
+    :disabled
+  ) {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+}
+.workspace-main .primary-action {
+  background: var(--primary);
+  color: var(--primary-ink);
+  border-radius: 12px;
+}
+.workspace-main .primary-action:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.segmented {
+  background: var(--surface-soft);
+}
+.workspace-main .segmented button[aria-pressed="true"] {
+  background: var(--primary) !important;
+  color: var(--primary-ink) !important;
+}
+.workspace-main :is(.visit-card, .appointment-calendar) {
+  background: var(--card);
+  border-color: var(--border);
+  border-radius: 16px;
+}
+.workspace-main .calendar-grid button[aria-pressed="true"] {
+  background: var(--accent) !important;
+  color: var(--accent-ink);
+  border-color: var(--primary) !important;
+}
+.calendar-grid button small {
+  color: var(--accent-ink);
+}
+.workspace-main :is(.visit-status, .workspace-notice, .mira-activity-status) {
+  background: var(--success);
+  color: var(--success-ink);
+}
+.workspace-main
+  :is(.visit-status.cancelled, .alert-error, .is-failed .mira-activity-status) {
+  background: var(--danger);
+  color: var(--danger-ink);
+  border-color: color-mix(in srgb, var(--danger-ink) 30%, var(--border));
+}
+.workspace-main
+  :is(
+    .pending-card,
+    .request-banner,
+    .pwa-offline,
+    .is-review .mira-activity-status
+  ) {
+  background: var(--warning);
+  color: var(--warning-ink);
+  border-color: color-mix(in srgb, var(--warning-ink) 25%, var(--border));
+}
+.workspace-main .credentials-card {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.workspace-dialog::backdrop {
+  background: #0a172a99;
+  backdrop-filter: blur(4px);
+}
+.workspace-transcript {
+  background: var(--card);
+  color: var(--foreground);
+}
+.workspace-transcript .workspace-toolbar {
+  border-color: var(--border);
+}
+.workspace-main .workspace-message {
+  background: var(--surface-soft);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 16px 4px;
+}
+.workspace-main .workspace-message.user {
+  background: var(--accent);
+  border-color: transparent;
+  border-radius: 16px 16px 4px 16px;
+}
+.workspace-message small {
+  color: var(--muted);
+  font-weight: 600;
+}
+.workspace-main .empty-conversation {
+  color: var(--muted);
+}
+.workspace-main .empty-conversation h3 {
+  color: var(--foreground);
+  font-size: 25px;
+}
+.workspace-main .empty-conversation .eyebrow {
+  color: var(--primary);
+}
+.workspace-main .conversation-starters button {
+  text-align: left;
+  padding: 13px 16px;
+  background: var(--input);
+}
+.workspace-composer input {
+  border-color: var(--border);
+}
+
+/* The call surface is part of each palette, including the compact player. */
+.careline-workspace .workspace-main .call-interface .voice-intro {
+  background: var(--voice-surface);
+  color: var(--voice-ink);
+}
+.careline-workspace .workspace-main .call-interface.compact-voice {
+  padding: 0;
+  overflow: visible;
+}
+.careline-workspace .workspace-main .call-interface.compact-voice .voice-intro {
+  padding: 18px 20px;
+  border-radius: 21px;
+}
+.careline-workspace .workspace-main .voice-intro :is(h2, .caller-name) {
+  color: var(--voice-ink);
+}
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  :is(
+    p,
+    .eyebrow,
+    .reply-language-control > span,
+    .reply-language-control > small,
+    .voice-session-badge
+  ) {
+  color: var(--voice-muted);
+}
+.careline-workspace .workspace-main .voice-intro .live-orb {
+  background: var(--orb);
+  border-color: var(--voice-border);
+  box-shadow:
+    0 0 0 14px color-mix(in srgb, var(--voice-ink) 4%, transparent),
+    0 0 0 29px color-mix(in srgb, var(--voice-ink) 3%, transparent),
+    0 16px 30px #102d2910;
+}
+.mira-monogram {
+  color: var(--orb-ink);
+}
+.careline-workspace
+  .voice-intro
+  :is(.voice-session-badge, .reply-language-control) {
+  background: var(--voice-control);
+  border-color: var(--voice-border);
+}
+.careline-workspace .voice-intro .voice-session-badge > span {
+  background: var(--primary);
+}
+.careline-workspace .voice-intro .call-timer {
+  color: var(--voice-ink);
+  border-color: var(--voice-border);
+}
+.careline-workspace .voice-intro .call-activity-bars span {
+  background: var(--voice-muted);
+}
+.careline-workspace .workspace-main .voice-intro .primary-action {
+  background: var(--voice-button);
+  color: var(--voice-button-ink);
+  border-color: transparent;
+  box-shadow: 0 4px 14px #10352a12;
+}
+.careline-workspace .workspace-main .voice-intro button:not(.primary-action),
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  .reply-language-control
+  button.language-picker-trigger {
+  background: var(--voice-control);
+  color: var(--voice-ink);
+  border-color: var(--voice-border);
+}
+.careline-workspace
+  .workspace-main
+  .call-interface
+  .voice-intro
+  .call-controls
+  button:not(.primary-action) {
+  background: var(--voice-control);
+  color: var(--voice-ink);
+  border-color: var(--voice-border);
+}
+.careline-workspace
+  .workspace-main
+  .call-interface
+  .voice-intro
+  .call-controls
+  button[aria-pressed="true"] {
+  background: var(--voice-button);
+  color: var(--voice-button-ink);
+}
+.careline-workspace
+  .workspace-main
+  .call-interface
+  .voice-intro
+  .call-controls
+  .end-call {
+  background: var(--danger);
+  color: var(--danger-ink);
+  border-color: transparent;
+}
+.avatar-call-badge {
+  background: var(--voice-button);
+  color: var(--voice-button-ink);
+  border-color: var(--voice-border);
+}
+
+/* Top-layer language menu must stay readable outside the call card. */
+.careline-workspace .workspace-main .voice-intro .language-picker-panel {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+  box-shadow: 0 20px 60px #00000030;
+}
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  .language-picker-panel
+  :is(p, span, strong) {
+  color: var(--foreground);
+}
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  .language-picker-panel
+  :is(.language-picker-heading > span, .language-picker-footer) {
+  color: var(--muted);
+  border-color: var(--border);
+}
+.language-picker-search {
+  background: var(--input);
+  border-color: var(--border);
+}
+.workspace-main .language-picker-search input {
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: none;
+}
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  .language-picker-panel
+  .language-picker-list
+  button {
+  background: transparent;
+  color: var(--foreground);
+  border-color: transparent;
+}
+.careline-workspace
+  .workspace-main
+  .voice-intro
+  .language-picker-panel
+  .language-picker-list
+  button:is(:hover, [data-active="true"], [aria-selected="true"]) {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Secondary surfaces and activity use the same tokens as the main workspace. */
+.workspace-main .behind-scenes summary {
+  color: var(--foreground);
+}
+.workspace-main .behind-scenes li {
+  font-family: inherit;
+  font-size: 13px;
+}
+.workspace-main .behind-scenes .mira-activity-item {
+  background: var(--surface-soft);
+  color: var(--foreground);
+  border-color: var(--border);
+  padding: 18px;
+}
+.workspace-main .behind-scenes .mira-activity-item :is(strong, p) {
+  color: var(--foreground);
+}
+.workspace-main .behind-scenes .mira-activity-item small {
+  color: var(--muted);
+}
+.mira-activity-empty {
+  background: var(--surface-soft);
+  border-color: var(--border);
+}
+:is(.pwa-install, .pwa-ios summary, .resume-request) {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+:is(.workspace-footer a, .sidebar-bottom a, .recovery-card a) {
+  color: var(--primary);
+}
+.recovery-page {
+  background: var(--background);
+}
+.phone-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 14px;
+}
+.phone-fields :is(select, input) {
+  width: 100%;
+  min-width: 0;
+}
+.doctor-message-banner {
+  padding: 10px 14px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-radius: 10px;
+}
+.visit-notes dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .appearance-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin: 24px 0;
+  gap: 16px;
+  margin: 26px 0;
   padding: 0;
   border: 0;
 }
 .appearance-option {
   position: relative;
   display: grid;
-  gap: 10px;
+  gap: 12px;
   padding: 22px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   cursor: pointer;
-  background: var(--card);
+  background: var(--input);
+  transition:
+    border-color 0.18s,
+    background 0.18s;
+}
+.appearance-option:hover {
+  border-color: var(--primary);
 }
 .appearance-option[data-selected="true"] {
   border-color: var(--primary);
   background: var(--accent);
-  box-shadow: inset 0 0 0 1px var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
 }
 .appearance-option input {
   position: absolute;
@@ -42,14 +563,15 @@
   accent-color: var(--primary);
   width: 18px;
   height: 18px;
+  min-height: 0;
 }
 .appearance-option span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 .appearance-option:focus-within {
-  outline: 3px solid #82bfa4;
-  outline-offset: 3px;
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
 }
 .appearance-options:disabled {
   opacity: 0.65;
@@ -58,216 +580,37 @@
   min-height: 24px;
   margin-top: 12px;
 }
-
-[data-theme="dark"] .sidebar {
-  background: #14201a;
-}
-[data-theme="dark"] .topbar {
-  background: #14201aeb;
-}
-[data-theme="dark"]
-  :is(
-    .brand-subtitle,
-    .sidebar-label,
-    .nav-item,
-    .sidebar-bottom,
-    .breadcrumb,
-    .breadcrumb strong,
-    .user-pill,
-    .demo-badge,
-    .eyebrow,
-    .page-heading p,
-    .heading-seal,
-    .workspace-footer
-  ) {
-  color: var(--muted);
-}
-[data-theme="dark"]
-  :is(
-    .nav-item.selected,
-    .nav-item:hover,
-    .sidebar-note,
-    .avatar-small,
-    .doctor-initials,
-    .segmented
-  ) {
-  background: var(--accent);
-  color: var(--foreground);
-}
-[data-theme="dark"]
-  :is(
-    .workspace-panel,
-    .workspace-voice,
-    .behind-scenes,
-    .pending-card,
-    .credentials-card,
-    .workspace-form,
-    .workspace-dialog,
-    .conversation-lab,
-    .pwa-ios p
-  ) {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: var(--border);
-}
-[data-theme="dark"] .workspace-voice:not(.compact-voice) {
-  background: var(--card);
-}
-[data-theme="dark"]
-  :is(
-    input,
-    textarea,
-    select,
-    .workspace-main select,
-    .workspace-form input,
-    .workspace-form textarea,
-    .workspace-composer input
-  ) {
-  background: var(--background);
-  color: var(--foreground);
-  border-color: var(--border);
-}
-[data-theme="dark"]
-  :is(
-    .workspace-panel p,
-    .behind-scenes p,
-    .workspace-form label,
-    .empty-conversation,
-    .empty-conversation h3,
-    .workspace-message small,
-    .reference-code,
-    .visit-notes dt,
-    .pending-card dt,
-    .calendar-weekday,
-    .calendar-grid button small,
-    .behind-scenes summary,
-    .workspace-transcript .workspace-toolbar small,
-    .action-receipt dt,
-    .mira-activity small
-  ) {
-  color: var(--muted);
-}
-[data-theme="dark"]
-  .workspace-main
-  button:not(.primary-action):not(.nav-item):not(.user-pill) {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: var(--border);
-}
-[data-theme="dark"] .workspace-main button:not(.primary-action):hover {
-  border-color: #75a48b;
-}
-[data-theme="dark"]
-  :is(
-    .visit-card,
-    .appointment-calendar,
-    .workspace-transcript,
-    .workspace-transcript .workspace-toolbar
-  ) {
-  border-color: var(--border);
-}
-[data-theme="dark"] .workspace-message {
-  background: #23352b;
-}
-[data-theme="dark"] .workspace-message.user {
-  background: #2b4837;
-}
-[data-theme="dark"]
-  :is(.visit-status, .workspace-notice, .mira-activity-status) {
-  background: #284631;
-  color: #c0e4c5;
-}
-[data-theme="dark"]
-  :is(.visit-status.cancelled, .alert-error, .is-failed .mira-activity-status) {
-  background: #452d29;
-  color: #f3b8aa;
-  border-color: #785044;
-}
-[data-theme="dark"]
-  :is(
-    .request-banner,
-    .pending-card,
-    .pwa-offline,
-    .is-review .mira-activity-status
-  ) {
-  background: #383521;
-  color: #e9dca6;
-  border-color: #605b39;
-}
-[data-theme="dark"] .credentials-card {
-  background: #203a31;
-}
-[data-theme="dark"] .calendar-grid button[aria-pressed="true"] {
-  background: #2b4837 !important;
-  border-color: #8eb59a !important;
-}
-[data-theme="dark"]
-  :is(
-    .pwa-install,
-    .pwa-ios summary,
-    .resume-request,
-    .mira-activity,
-    .language-picker-panel,
-    .language-search,
-    .language-picker-trigger
-  ) {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: var(--border);
-}
-[data-theme="dark"]
-  :is(
-    .language-picker-panel p,
-    .language-picker-panel small,
-    .language-picker-panel footer,
-    .language-search input,
-    .language-option,
-    .language-option span
-  ) {
-  color: var(--foreground);
-}
-[data-theme="dark"]
-  :is(.language-option:hover, .language-option[aria-selected="true"]) {
-  background: var(--accent);
-}
-[data-theme="dark"]
-  :is(.workspace-footer a, .sidebar-bottom a, .recovery-card a) {
-  color: #a1d4b5;
-}
-[data-theme="dark"] .recovery-page {
-  background: var(--background);
-}
-/* Preserve the green call surface and the contrast of its controls. */
-[data-theme="dark"] .workspace-main .voice-intro button:not(.primary-action) {
-  background: #ffffff12;
-  color: #eff9eb;
-  border-color: #ffffff30;
-}
-[data-theme="dark"]
-  .workspace-main
-  .voice-intro
-  .call-controls
-  button[aria-pressed="true"] {
-  background: #e4eed7;
-  color: #294b36;
-}
-[data-theme="dark"] .workspace-main .voice-intro .call-controls .end-call {
-  background: #f2b7a7;
-  color: #642b22;
-}
-[data-theme="dark"] .workspace-main .language-picker-trigger {
-  background: #203b2d;
-  color: #e2eee6;
-}
 @media (max-width: 600px) {
-  .appearance-options {
+  .appearance-options,
+  .phone-fields {
     grid-template-columns: 1fr;
   }
   .appearance-option {
     padding: 18px;
   }
-  [data-theme="dark"] .sidebar nav {
-    background: #14201af5;
+  .careline-workspace .sidebar nav {
+    background: var(--chrome);
     border-color: var(--border);
+    box-shadow: 0 -4px 24px #0000000c;
+  }
+  .careline-workspace .page-heading p {
+    font-size: 13px;
+  }
+  .careline-workspace
+    .workspace-main
+    .call-interface.compact-voice
+    .voice-intro {
+    padding: 16px;
+  }
+  .workspace-main :is(.workspace-panel, .workspace-voice, .behind-scenes) {
+    border-radius: 18px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .careline-workspace *,
+  .careline-workspace *::before,
+  .careline-workspace *::after {
+    animation: none !important;
+    transition: none !important;
   }
 }

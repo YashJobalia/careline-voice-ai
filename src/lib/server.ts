@@ -161,7 +161,13 @@ export async function db<T>(
 export function failure(error: unknown) {
   if (error instanceof ZodError)
     return Response.json(
-      { error: "Please check the information you entered." },
+      {
+        error: error.issues
+          .map(
+            (issue) => `${issue.path.join(".") || "Details"}: ${issue.message}`,
+          )
+          .join(" "),
+      },
       { status: 400 },
     );
   if (error instanceof HttpError)

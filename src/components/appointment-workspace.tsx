@@ -42,6 +42,7 @@ export function AppointmentWorkspace({
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [date, setDate] = useState("");
+  const [messageVisit, setMessageVisit] = useState<Visit>();
   const [moving, setMoving] = useState<Visit>();
   const [booking, setBooking] = useState(false);
   const [reason, setReason] = useState<{
@@ -302,6 +303,16 @@ export function AppointmentWorkspace({
                   <Notes value={v.notes} />
                 </details>
               )}
+              {v.notes.includes('"Doctor messages"') && (
+                <p className="doctor-message-banner">
+                  Message for doctor in visit notes
+                </p>
+              )}
+              {v.session_id === user.id && (
+                <button onClick={() => setMessageVisit(v)}>
+                  Leave a message for doctor
+                </button>
+              )}
               {v.cancellation_reason && (
                 <p>Cancellation reason: {v.cancellation_reason}</p>
               )}
@@ -340,6 +351,36 @@ export function AppointmentWorkspace({
           ))
         )}
       </div>
+      {messageVisit && (
+        <WorkspaceDialog
+          titleId="message-title"
+          onClose={() => setMessageVisit(undefined)}
+        >
+          <form
+            className="workspace-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onPrepare({
+                action: "message_doctor",
+                id: messageVisit.id,
+                summary: String(new FormData(e.currentTarget).get("summary")),
+              });
+              setMessageVisit(undefined);
+            }}
+          >
+            <h2 id="message-title">Leave a message for your doctor</h2>
+            <p>
+              Saved with {messageVisit.appointment_code} for the doctor to
+              review. Not an urgent contact channel; no email or SMS is sent.
+            </p>
+            <label>
+              Message summary
+              <textarea name="summary" required minLength={3} />
+            </label>
+            <button className="primary-action">Review message</button>
+          </form>
+        </WorkspaceDialog>
+      )}
       {reason && (
         <WorkspaceDialog
           titleId="reason-title"
@@ -400,8 +441,8 @@ export function AppointmentWorkspace({
                       slotId,
                       notes: {
                         concern: String(f.get("concern")),
-                        duration: String(f.get("duration")),
-                        severity: String(f.get("severity")),
+                        duration: String(f.get("duration") || "Not provided"),
+                        severity: String(f.get("severity") || "Not provided"),
                         context: String(f.get("context") || ""),
                       },
                     },
@@ -468,36 +509,24 @@ export function AppointmentWorkspace({
               <>
                 <label>
                   Main concern
-                  <textarea
-                    name="concern"
-                    required
-                    minLength={3}
-                    maxLength={600}
-                  />
+                  <textarea name="concern" required minLength={3} />
                 </label>
                 <div className="form-columns">
                   <label>
-                    How long has it been happening?
+                    How long has it been happening? (optional)
                     <input
                       name="duration"
-                      required
-                      maxLength={200}
                       placeholder="For example, three days"
                     />
                   </label>
                   <label>
-                    How severe is it?
-                    <input
-                      name="severity"
-                      required
-                      maxLength={200}
-                      placeholder="For example, mild"
-                    />
+                    How severe is it? (optional)
+                    <input name="severity" placeholder="For example, mild" />
                   </label>
                 </div>
                 <label>
                   Other context (optional)
-                  <textarea name="context" maxLength={800} />
+                  <textarea name="context" />
                 </label>
               </>
             )}

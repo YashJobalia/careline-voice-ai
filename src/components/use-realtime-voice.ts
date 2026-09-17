@@ -5,6 +5,7 @@ import type { Message } from "@/lib/clinic";
 import { completedToolCalls, decodeToolArguments } from "@/lib/workspace-tool";
 import { type ReplyLanguage } from "@/lib/voice-language";
 import { actionActivity, type ActionActivity } from "@/lib/action-activity";
+import { idleAction, explicitGoodbye } from "@/lib/call-lifecycle";
 export function useRealtimeVoice(options: {
   replyLanguage: ReplyLanguage;
   onMessage: (message: Message, ownerId: string) => void;
@@ -43,10 +44,36 @@ export function useRealtimeVoice(options: {
   const abort = useRef<AbortController | null>(null);
   const connectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const goodbyeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lifecycle = useRef({
+    lastActivity: 0,
+    warned: false,
+    speaking: false,
+    responding: false,
+    userSpeaking: false,
+    tools: 0,
+    ending: false,
+    goodbyeId: "",
+  });
   const stop = useCallback(() => {
     generation.current++;
     if (connectionTimer.current) clearTimeout(connectionTimer.current);
     if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+    if (idleTimer.current) clearInterval(idleTimer.current);
+    if (goodbyeTimer.current) clearTimeout(goodbyeTimer.current);
+    idleTimer.current = null;
+    goodbyeTimer.current = null;
+    lifecycle.current = {
+      lastActivity: 0,
+      warned: false,
+      speaking: false,
+      responding: false,
+      userSpeaking: false,
+      tools: 0,
+      ending: false,
+      goodbyeId: "",
+    };
     connectionTimer.current = null;
     disconnectTimer.current = null;
     abort.current?.abort();
@@ -75,6 +102,26 @@ export function useRealtimeVoice(options: {
     if (channel.current?.readyState === "open")
       channel.current.send(JSON.stringify(event));
   }, []);
+  const endPolitely = useCallback(
+    (idle = false) => {
+      if (lifecycle.current.ending || channel.current?.readyState !== "open")
+        return;
+      lifecycle.current.ending = true;
+      if (lifecycle.current.responding) send({ type: "response.cancel" });
+      send({ type: "output_audio_buffer.clear" });
+      send({
+        type: "response.create",
+        response: {
+          metadata: { purpose: "goodbye" },
+          tool_choice: "none",
+          instructions: `In ${callbacks.current.replyLanguage}, say one brief, warm goodbye${idle ? ", explaining you will end the quiet call and they can return when ready" : ""}. Do not ask another question or claim any unsaved action succeeded.`,
+        },
+      });
+      setStatus("Saying goodbye...");
+      goodbyeTimer.current = setTimeout(stop, 15000);
+    },
+    [send, stop],
+  );
   const start = useCallback(async () => {
     stop();
     const version = generation.current;
@@ -142,11 +189,36 @@ export function useRealtimeVoice(options: {
         connectionTimer.current = null;
         setConnecting(false);
         setActive(true);
+        lifecycle.current.lastActivity = performance.now();
+        idleTimer.current = setInterval(() => {
+          const state = lifecycle.current;
+          if (state.ending) return;
+          const action = idleAction(
+            performance.now() - state.lastActivity,
+            state.warned,
+            state.speaking ||
+              state.responding ||
+              state.userSpeaking ||
+              state.tools > 0,
+          );
+          if (action === "end") endPolitely(true);
+          if (action === "check_in") {
+            state.warned = true;
+            state.lastActivity = performance.now();
+            send({
+              type: "response.create",
+              response: {
+                tool_choice: "none",
+                instructions: `In ${callbacks.current.replyLanguage}, gently ask once whether they are still there. Say you can pause and they can return later. Do not repeat intake questions.`,
+              },
+            });
+          }
+        }, 1000);
         setStatus("Listening - speak in any supported language");
         send({
           type: "response.create",
           response: {
-            instructions: `Introduce yourself briefly as Mira, CareLine's voice assistant, in ${callbacks.current.replyLanguage}, their selected reply language. Ask how you can help. Do not take actions yet. Understand input in any language, but keep replies in the selected language.`,
+            instructions: `Immediately offer a warm greeting and introduce yourself briefly as Mira, CareLine's AI voice assistant, in ${callbacks.current.replyLanguage}. If previous conversation exists, offer to continue or start something new without reciting private details. Otherwise ask how you can help. Do not take actions yet.`,
           },
         });
       };
@@ -160,46 +232,89 @@ export function useRealtimeVoice(options: {
         );
       };
       dc.onmessage = (e) => {
+        if (version !== generation.current) return;
+        let event;
+        try {
+          event = JSON.parse(e.data);
+        } catch {
+          return;
+        }
+        const state = lifecycle.current;
+        if (event.type === "response.created") {
+          state.responding = true;
+          if (event.response?.metadata?.purpose === "goodbye")
+            state.goodbyeId = event.response.id;
+        }
+        if (event.type === "response.done") state.responding = false;
+        if (event.type === "input_audio_buffer.speech_started") {
+          turn.current++;
+          state.userSpeaking = true;
+          state.warned = false;
+          state.lastActivity = performance.now();
+          setStatus("Listening...");
+        }
+        if (event.type === "input_audio_buffer.speech_stopped") {
+          state.userSpeaking = false;
+          state.lastActivity = performance.now();
+          setStatus("Thinking...");
+        }
+        if (
+          event.type ===
+            "conversation.item.input_audio_transcription.completed" &&
+          event.transcript
+        ) {
+          callbacks.current.onMessage(
+            { role: "user", content: event.transcript },
+            ownerId,
+          );
+          if (explicitGoodbye(event.transcript)) endPolitely();
+        }
+        if (
+          event.type === "response.output_audio_transcript.done" &&
+          event.transcript
+        )
+          callbacks.current.onMessage(
+            {
+              role: "assistant",
+              content: event.transcript.replace(/[\u2013\u2014]/g, "-"),
+            },
+            ownerId,
+          );
+        if (event.type === "output_audio_buffer.started") {
+          state.speaking = true;
+          setStatus(
+            state.ending ? "Saying goodbye..." : "Speaking - you can interrupt",
+          );
+        }
+        if (
+          event.type === "output_audio_buffer.stopped" ||
+          event.type === "output_audio_buffer.cleared"
+        ) {
+          state.speaking = false;
+          state.lastActivity = performance.now();
+          if (
+            state.ending &&
+            state.goodbyeId &&
+            event.response_id === state.goodbyeId
+          ) {
+            stop();
+            return;
+          }
+          if (!state.ending) setStatus("Listening...");
+        }
+        if (event.type === "error")
+          callbacks.current.onError(
+            event.error?.message || "Voice connection error.",
+          );
+        const calls = completedToolCalls(event);
+        if (!calls.length || state.ending) return;
+        const callTurn = turn.current;
+        state.tools++;
         chain = chain
           .then(async () => {
             if (version !== generation.current) return;
-            const event = JSON.parse(e.data);
-            if (event.type === "input_audio_buffer.speech_started") {
-              turn.current++;
-              setStatus("Listening...");
-            }
-            if (event.type === "input_audio_buffer.speech_stopped")
-              setStatus("Thinking...");
-            if (
-              event.type ===
-                "conversation.item.input_audio_transcription.completed" &&
-              event.transcript
-            )
-              callbacks.current.onMessage(
-                { role: "user", content: event.transcript },
-                ownerId,
-              );
-            if (
-              event.type === "response.output_audio_transcript.done" &&
-              event.transcript
-            )
-              callbacks.current.onMessage(
-                {
-                  role: "assistant",
-                  content: event.transcript.replace(/[\u2013\u2014]/g, "-"),
-                },
-                ownerId,
-              );
-            if (event.type === "output_audio_buffer.started")
-              setStatus("Speaking - you can interrupt");
-            if (event.type === "output_audio_buffer.stopped")
-              setStatus("Listening...");
-            if (event.type === "error")
-              callbacks.current.onError(
-                event.error?.message || "Voice connection error.",
-              );
-            const calls = completedToolCalls(event);
             for (const call of calls) {
+              if (lifecycle.current.ending) return;
               if (handledCalls.has(call.call_id)) continue;
               handledCalls.add(call.call_id);
               const tick = performance.now();
@@ -212,17 +327,36 @@ export function useRealtimeVoice(options: {
                 const args = decodeToolArguments(call.arguments);
                 action = args.action;
                 actionArgs = args.args;
+                if (args.action === "end_call") {
+                  send({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: call.call_id,
+                      output: JSON.stringify({ ending: true }),
+                    },
+                  });
+                  endPolitely();
+                  return;
+                }
                 if (
                   args.action === "confirm" &&
                   (!pending.current ||
                     pending.current.token !== args.token ||
-                    turn.current <= pending.current.turn)
+                    callTurn <= pending.current.turn ||
+                    callTurn !== turn.current)
                 )
                   throw new Error(
                     "Ask for confirmation and wait for the next user turn first.",
                   );
-                await callbacks.current.beforeAction();
-                if (version !== generation.current) return;
+                if (args.action === "confirm")
+                  await callbacks.current.beforeAction();
+                if (version !== generation.current || lifecycle.current.ending)
+                  return;
+                if (args.action === "confirm" && callTurn !== turn.current)
+                  throw new Error(
+                    "The user spoke again. Clarify their latest intent before confirming.",
+                  );
                 const r = await fetch("/api/workspace", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -250,7 +384,15 @@ export function useRealtimeVoice(options: {
                     : {}),
                 };
                 try {
-                  await callbacks.current.onEffect(effect);
+                  const update = callbacks.current.onEffect(effect);
+                  if (credentials || effect.signedOut || effect.clearedHistory)
+                    await update;
+                  else
+                    void update.catch(() =>
+                      callbacks.current.onError(
+                        "The screen could not refresh. Check the saved result before repeating changes.",
+                      ),
+                    );
                 } catch {
                   callbacks.current.onError(
                     "The action returned a result, but the screen could not update. Refresh to check it before repeating the request.",
@@ -288,13 +430,25 @@ export function useRealtimeVoice(options: {
                 },
               });
             }
-            if (calls.length) send({ type: "response.create" });
+            if (
+              calls.length &&
+              !lifecycle.current.ending &&
+              !lifecycle.current.responding &&
+              !lifecycle.current.userSpeaking
+            )
+              send({ type: "response.create" });
           })
           .catch(() =>
             callbacks.current.onError(
               "Could not process a voice event. Please retry.",
             ),
-          );
+          )
+          .finally(() => {
+            if (version === generation.current) {
+              lifecycle.current.tools--;
+              lifecycle.current.lastActivity = performance.now();
+            }
+          });
       };
       pc.onconnectionstatechange = () => {
         if (version !== generation.current) return;
@@ -354,7 +508,7 @@ export function useRealtimeVoice(options: {
                 : "Microphone unavailable. You can continue by typing.",
       );
     }
-  }, [send, stop]);
+  }, [send, stop, endPolitely]);
   function toggleMute() {
     const value = !muted;
     stream.current?.getAudioTracks().forEach((t) => (t.enabled = !value));
@@ -399,6 +553,7 @@ export function useRealtimeVoice(options: {
     toggleSpeaker,
     start,
     stop,
+    endPolitely,
     toggleMute,
     send,
     setDraft,

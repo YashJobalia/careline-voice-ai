@@ -1,4 +1,8 @@
 "use client";
+import { PhoneFields } from "./phone-fields";
+import { normalizePhone } from "@/lib/phone-number";
+import { GenderSelect } from "./gender-select";
+import { newPasswordAttributes, PASSWORD_HINT } from "@/lib/password";
 import { useState } from "react";
 import type { Account, Mutation } from "@/lib/workspace";
 import { RecoveryForm } from "./recovery-form";
@@ -108,27 +112,13 @@ export function AccountWorkspace({
                     max={new Date().toISOString().slice(0, 10)}
                   />
                 </label>
-                <label>
-                  Phone with country code
-                  <input
-                    name="phone"
-                    type="tel"
-                    placeholder="+13125550101"
-                    pattern="\+[1-9][0-9]{7,14}"
-                    required
-                    autoComplete="tel"
-                  />
-                </label>
+                <PhoneFields />
               </>
             )}
             {signup && (
               <label>
                 Gender (optional)
-                <input
-                  name="gender"
-                  maxLength={60}
-                  placeholder="How you describe your gender"
-                />
+                <GenderSelect />
               </label>
             )}
             <label>
@@ -147,11 +137,13 @@ export function AccountWorkspace({
                 name="password"
                 type="password"
                 required
-                minLength={signup ? 10 : 1}
-                maxLength={128}
+                {...(signup
+                  ? newPasswordAttributes
+                  : { minLength: 1, maxLength: 128 })}
                 autoComplete={signup ? "new-password" : "current-password"}
               />
             </label>
+            {signup && <small>{PASSWORD_HINT}</small>}
             {signup && (
               <p>
                 Use fictional details. This creates a patient account. Doctor
@@ -187,13 +179,20 @@ export function AccountWorkspace({
             onSubmit={(e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
-              onPrepare({
-                action: "update_profile",
-                name: String(f.get("name")),
-                dateOfBirth: String(f.get("dateOfBirth")),
-                gender: String(f.get("gender") || ""),
-                phone: String(f.get("phone")),
-              });
+              try {
+                onPrepare({
+                  action: "update_profile",
+                  name: String(f.get("name")),
+                  dateOfBirth: String(f.get("dateOfBirth")),
+                  gender: String(f.get("gender") || ""),
+                  phone: normalizePhone(
+                    String(f.get("phone")),
+                    String(f.get("countryCode")),
+                  ),
+                });
+              } catch (error) {
+                setError((error as Error).message);
+              }
             }}
           >
             <label>
@@ -215,24 +214,10 @@ export function AccountWorkspace({
                 required
               />
             </label>
-            <label>
-              Phone with country code
-              <input
-                type="tel"
-                name="phone"
-                defaultValue={user.phone}
-                required
-                pattern="\+[1-9][0-9]{7,14}"
-              />
-            </label>
+            <PhoneFields value={user.phone} />
             <label>
               Gender (optional)
-              <input
-                name="gender"
-                maxLength={60}
-                defaultValue={user.gender || ""}
-                placeholder="How you describe your gender"
-              />
+              <GenderSelect value={user.gender} />
               <small>You can leave this blank.</small>
             </label>
             <button className="primary-action">Review profile changes</button>
@@ -261,8 +246,7 @@ export function AccountWorkspace({
                   type="password"
                   name="password"
                   required
-                  minLength={10}
-                  maxLength={128}
+                  {...newPasswordAttributes}
                   autoComplete="new-password"
                 />
               </label>
@@ -272,11 +256,11 @@ export function AccountWorkspace({
                   type="password"
                   name="confirmPassword"
                   required
-                  minLength={10}
-                  maxLength={128}
+                  {...newPasswordAttributes}
                   autoComplete="new-password"
                 />
               </label>
+              <small>{PASSWORD_HINT}</small>
               <button disabled={busy} className="primary-action">
                 {busy ? "Changing password..." : "Change password"}
               </button>

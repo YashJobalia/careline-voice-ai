@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
+import { parsePhoneNumberFromString } from "../src/lib/phone-library";
 
 const details = {
   name: "Alex Demo",
@@ -52,7 +53,7 @@ function fixture(
   const source = readFileSync(
     new URL("../supabase/functions/register-patient/index.ts", import.meta.url),
     "utf8",
-  ).replace(/^import .*;\s*/m, "");
+  ).replace(/^import .*;\s*/gm, "");
   const js = ts.transpileModule(source, {
     compilerOptions: {
       target: ts.ScriptTarget.ES2022,
@@ -67,6 +68,10 @@ function fixture(
       },
     },
     createClient: () => admin,
+    parsePhoneNumberFromString: (
+      value: string,
+      options: Parameters<typeof parsePhoneNumberFromString>[1],
+    ) => parsePhoneNumberFromString(value, { ...options }),
     Response,
     crypto,
     Uint8Array,
@@ -91,7 +96,16 @@ test("registration rejects missing contacts and short manually supplied password
   for (const body of [
     { ...details, email: undefined },
     { ...details, phone: undefined },
-    { ...details, password: "short" },
+    ...[
+      "short",
+      "Abc1!xy",
+      "Abcdefghijklmn12!x",
+      "abcdef1!",
+      "ABCDEF1!",
+      "Abcdefg!",
+      "Abcdef12",
+      "Abcdef1 ",
+    ].map((password) => ({ ...details, password })),
   ]) {
     const f = fixture();
     assert.equal((await f.call(body)).status, 400);
@@ -105,7 +119,11 @@ test("AI registration generates unique passwords and preserves the guest identit
     br = await (
       await b.call({ ...details, email: "robin@example.com" })
     ).json();
-  assert.ok(ar.password.length >= 32);
+  assert.equal(ar.password.length, 16);
+  assert.match(
+    ar.password,
+    /(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9])(?=.*[^A-Za-z0-9\s])/,
+  );
   assert.notEqual(ar.password, br.password);
   assert.equal(
     a.written.profile?.user_id,
@@ -120,12 +138,12 @@ test("manual password is honored and caller-supplied doctor roles are ignored", 
   const r = await (
     await f.call({
       ...details,
-      password: "MyChosenPassword!123",
+      password: "MyPassword!123",
       account_type: "doctor",
       doctor_id: "maya-shah",
     })
   ).json();
-  assert.equal(r.password, "MyChosenPassword!123");
+  assert.equal(r.password, "MyPassword!123");
   assert.equal(f.written.profile?.account_type, "patient");
   assert.equal(f.written.profile?.doctor_id, undefined);
 });

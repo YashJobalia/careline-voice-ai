@@ -9,6 +9,7 @@ export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
       "My appointments: list/calendar, all/upcoming/past/cancelled/reschedule requests",
       "Our specialists",
       "My account: profile, password, sign out",
+      "Settings: light, dark or system appearance",
       ...(user.role === "doctor" && !user.guest
         ? ["Doctor panel: clinic appointment list/calendar and intake notes"]
         : []),
@@ -25,6 +26,7 @@ export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
       ? []
       : [
           "Read own profile and appointment history",
+          "Leave a confirmed summary in own appointment notes for the doctor to review; no email/SMS or read receipt",
           "Search own appointments by name, exact email, full phone, appointment reference or doctor ID",
           "Book a visit for self, except with self as doctor",
           "Reschedule own upcoming confirmed appointment",
@@ -37,6 +39,7 @@ export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
             ? [
                 "Read/search clinic appointments, including contact matching",
                 "Read appointment intake notes",
+                "Read patient messages attached to appointments in visit notes",
                 "Cancel clinic appointments with optional reason",
                 "Request patient rescheduling with optional reason",
               ]

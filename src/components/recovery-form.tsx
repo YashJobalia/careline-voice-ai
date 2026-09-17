@@ -1,4 +1,5 @@
 "use client";
+import { newPasswordAttributes, PASSWORD_HINT } from "@/lib/password";
 import { useState } from "react";
 export function RecoveryForm({
   completing = false,
@@ -78,8 +79,7 @@ export function RecoveryForm({
                   type="password"
                   autoComplete="new-password"
                   required
-                  minLength={10}
-                  maxLength={128}
+                  {...newPasswordAttributes}
                 />
               </label>
               <label>
@@ -89,14 +89,10 @@ export function RecoveryForm({
                   type="password"
                   autoComplete="new-password"
                   required
-                  minLength={10}
-                  maxLength={128}
+                  {...newPasswordAttributes}
                 />
               </label>
-              <small>
-                Use at least 10 characters. Avoid reusing a password from
-                another site.
-              </small>
+              <small>{PASSWORD_HINT}</small>
             </>
           ) : (
             <label>

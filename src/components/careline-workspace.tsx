@@ -42,6 +42,7 @@ const detailLabels: Record<string, string> = {
   phone: "Phone",
   email: "Email",
   notes: "Appointment notes",
+  summary: "Message summary",
   reason: "Reason",
 };
 async function api<T>(path: string, body?: unknown): Promise<T> {
@@ -58,7 +59,9 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
 export function CarelineWorkspace() {
   const [user, setUser] = useState<Account | null>(null);
   const { setAccountId } = useAppearance();
-  useEffect(() => { setAccountId(user?.id || null); }, [user?.id, setAccountId]);
+  useEffect(() => {
+    setAccountId(user?.id || null);
+  }, [user?.id, setAccountId]);
   const [display, setDisplay] = useState<Navigation>({
     page: "reception",
     mode: "list",
@@ -192,7 +195,7 @@ export function CarelineWorkspace() {
       if (effect.scope === "clinic") setClinic(effect.appointments as Visit[]);
       else setVisits(effect.appointments as Visit[]);
     }
-    if (effect.callControl === "end_call") voice.stop();
+    if (effect.callControl === "end_call") voice.endPolitely();
     if (effect.callControl === "mute" && !voice.muted) voice.toggleMute();
     if (effect.pending) {
       setPending(effect.pending);
@@ -544,11 +547,13 @@ export function CarelineWorkspace() {
                         ? voice.status
                         : voice.muted
                           ? "Microphone muted"
-                          : voice.status.startsWith("Speaking")
-                            ? "Mira is speaking"
-                            : voice.status.startsWith("Thinking")
-                              ? "Mira is working on it"
-                              : "Your turn. Mira is listening."
+                          : voice.status.startsWith("Saying goodbye")
+                            ? "Mira is saying goodbye"
+                            : voice.status.startsWith("Speaking")
+                              ? "Mira is speaking"
+                              : voice.status.startsWith("Thinking")
+                                ? "Mira is working on it"
+                                : "Your turn. Mira is listening."
                       : "A little conversation. A lot taken care of."}
                 </p>
               </div>
@@ -905,7 +910,9 @@ export function CarelineWorkspace() {
                 </button>
               </div>
             ))}
-          {display.page === "settings" && <AppearanceSettings signedIn={Boolean(user)} />}
+          {display.page === "settings" && (
+            <AppearanceSettings signedIn={Boolean(user)} />
+          )}
           {display.page === "account" && (
             <AccountWorkspace
               key={`${user?.id || "guest"}-${display.accountSection || "profile"}-${authEmail}-${JSON.stringify([user?.name, user?.phone, user?.dateOfBirth, user?.gender])}`}
