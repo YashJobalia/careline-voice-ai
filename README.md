@@ -31,7 +31,7 @@ npm run dev
 Open http://localhost:3000. Secrets belong in server environment variables. Never put an OpenAI or Supabase service-role key in a NEXT_PUBLIC variable.
 
 Required: OPENAI_API_KEY, OPENAI_MODEL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SESSION_SECRET.
-Optional: OPENAI_REALTIME_MODEL (defaults to gpt-realtime), SUPABASE_SERVICE_ROLE_KEY (local registration adapter). Without the server key, registration uses the register-patient Supabase Edge Function.
+Optional: OPENAI_REALTIME_MODEL (defaults to gpt-realtime-2), SUPABASE_SERVICE_ROLE_KEY (local registration adapter). Without the server key, registration uses the register-patient Supabase Edge Function. See [account and voice reliability](docs/reliability-verification.md) for recovery setup and verification results.
 
 See [workspace setup and demo accounts](docs/workspace.md) for schema, architecture, limitations, and credentials. The database schema and demo fixtures have been applied to the configured hosted project. Website changes are local and have not been deployed to Vercel.
 

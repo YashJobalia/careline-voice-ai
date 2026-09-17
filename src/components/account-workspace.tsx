@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Account, Mutation } from "@/lib/workspace";
+import { RecoveryForm } from "./recovery-form";
 export function AccountWorkspace({
   user,
   section,
@@ -20,6 +21,7 @@ export function AccountWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [recovery, setRecovery] = useState(section === "recovery");
   async function submit(form: HTMLFormElement, password = false) {
     setBusy(true);
     setError("");
@@ -29,6 +31,8 @@ export function AccountWorkspace({
         string,
         string
       >;
+      if (password && data.password !== data.confirmPassword)
+        throw new Error("Passwords do not match.");
       await (password
         ? onPassword(data)
         : onAuth({ ...data, action: signup ? "signup" : "signin" }));
@@ -42,6 +46,15 @@ export function AccountWorkspace({
       setBusy(false);
     }
   }
+  if (recovery)
+    return (
+      <>
+        <button className="secondary-action" onClick={() => setRecovery(false)}>
+          Back to account
+        </button>
+        <RecoveryForm />
+      </>
+    );
   return (
     <section className="workspace-panel">
       <h2>
@@ -149,13 +162,26 @@ export function AccountWorkspace({
               {busy ? "Please wait..." : signup ? "Create account" : "Sign in"}
             </button>
           </form>
+          {!signup && (
+            <button
+              className="secondary-action"
+              onClick={() => setRecovery(true)}
+            >
+              Forgot password?
+            </button>
+          )}
         </>
       ) : (
         <>
           <p className="account-role">
             {user.role === "doctor" ? "Doctor and patient" : "Patient"} account
           </p>
-          <p>{user.email}</p>
+          <p>
+            <strong>Sign-in email:</strong> {user.email}
+          </p>
+          <p>
+            Keep your contact details up to date. Review changes before saving.
+          </p>
           <form
             className="workspace-form inline-form"
             onSubmit={(e) => {
@@ -240,10 +266,27 @@ export function AccountWorkspace({
                   autoComplete="new-password"
                 />
               </label>
+              <label>
+                Confirm new password
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  required
+                  minLength={10}
+                  maxLength={128}
+                  autoComplete="new-password"
+                />
+              </label>
               <button disabled={busy} className="primary-action">
-                Change password
+                {busy ? "Changing password..." : "Change password"}
               </button>
             </form>
+            <button
+              className="secondary-action"
+              onClick={() => setRecovery(true)}
+            >
+              Forgot your current password?
+            </button>
           </details>
           <div className="workspace-actions">
             <button onClick={() => onPrepare({ action: "clear_history" })}>

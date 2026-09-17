@@ -7,6 +7,7 @@ export const navigation = z.object({
     "appointments",
     "specialists",
     "account",
+    "settings",
     "doctor",
   ]),
   mode: z.enum(["list", "calendar"]).optional(),
@@ -18,7 +19,7 @@ export const navigation = z.object({
     .enum(["all", "upcoming", "past", "cancelled", "requests"])
     .optional(),
   accountSection: z
-    .enum(["profile", "password", "signin", "signup"])
+    .enum(["profile", "password", "signin", "signup", "recovery"])
     .optional(),
   selectedDate: z
     .string()
@@ -69,6 +70,10 @@ export const visitNotes = z.object({
   context: z.string().trim().max(800).default(""),
 });
 export const mutation = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("reset_password"),
+    email: z.string().trim().email().max(254),
+  }),
   patientDetails.extend({ action: z.literal("register") }),
   z.object({ action: z.literal("book"), slotId: z.uuid(), notes: visitNotes }),
   z.object({ action: z.literal("reschedule"), id: z.uuid(), slotId: z.uuid() }),
@@ -96,6 +101,7 @@ export type PendingAction = {
   details: Mutation;
 };
 export type ActionResult = {
+  receipt?: ActionReceipt;
   ok?: boolean;
   message?: string;
   pending?: PendingAction;
@@ -108,6 +114,13 @@ export type ActionResult = {
     originalRequest?: string;
   };
   [key: string]: unknown;
+};
+export type ActionReceipt = {
+  id: string;
+  title: string;
+  action: string;
+  summary: string;
+  fields: { label: string; value: string }[];
 };
 export type Visit = {
   id: string;

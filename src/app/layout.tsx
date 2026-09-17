@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./appearance.css";
+import { AppearanceProvider } from "@/components/appearance-provider";
+import { appearanceScript } from "@/lib/appearance";
 export const metadata: Metadata = {
   title: "CareLine AI | Conversational Voice Agent",
   description:
@@ -24,8 +27,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: appearanceScript }} />
+      </head>
+      <body>
+        <AppearanceProvider>{children}</AppearanceProvider>
+      </body>
     </html>
   );
 }

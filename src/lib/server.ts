@@ -27,7 +27,9 @@ export function sign(value: object) {
 }
 export function verify<T>(token: string): T {
   try {
-    const [body, signature] = token.split(".");
+    const parts = token.split(".");
+    if (parts.length !== 2) throw 0;
+    const [body, signature] = parts;
     const expected = createHmac("sha256", process.env.SESSION_SECRET || "")
       .update(body)
       .digest("base64url");

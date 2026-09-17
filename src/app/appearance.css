@@ -1,0 +1,273 @@
+/* Shared appearance tokens. The call panel keeps its own contrasting palette. */
+:root {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #101a17;
+  --card: #18251f;
+  --foreground: #e2eee6;
+  --muted: #a5b8ab;
+  --primary: #36765d;
+  --border: #35483c;
+  --accent: #263e30;
+}
+.appearance-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 24px 0;
+  padding: 0;
+  border: 0;
+}
+.appearance-option {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  background: var(--card);
+}
+.appearance-option[data-selected="true"] {
+  border-color: var(--primary);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+.appearance-option input {
+  position: absolute;
+  top: 20px;
+  right: 18px;
+  accent-color: var(--primary);
+  width: 18px;
+  height: 18px;
+}
+.appearance-option span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.appearance-option:focus-within {
+  outline: 3px solid #82bfa4;
+  outline-offset: 3px;
+}
+.appearance-options:disabled {
+  opacity: 0.65;
+}
+.appearance-status {
+  min-height: 24px;
+  margin-top: 12px;
+}
+
+[data-theme="dark"] .sidebar {
+  background: #14201a;
+}
+[data-theme="dark"] .topbar {
+  background: #14201aeb;
+}
+[data-theme="dark"]
+  :is(
+    .brand-subtitle,
+    .sidebar-label,
+    .nav-item,
+    .sidebar-bottom,
+    .breadcrumb,
+    .breadcrumb strong,
+    .user-pill,
+    .demo-badge,
+    .eyebrow,
+    .page-heading p,
+    .heading-seal,
+    .workspace-footer
+  ) {
+  color: var(--muted);
+}
+[data-theme="dark"]
+  :is(
+    .nav-item.selected,
+    .nav-item:hover,
+    .sidebar-note,
+    .avatar-small,
+    .doctor-initials,
+    .segmented
+  ) {
+  background: var(--accent);
+  color: var(--foreground);
+}
+[data-theme="dark"]
+  :is(
+    .workspace-panel,
+    .workspace-voice,
+    .behind-scenes,
+    .pending-card,
+    .credentials-card,
+    .workspace-form,
+    .workspace-dialog,
+    .conversation-lab,
+    .pwa-ios p
+  ) {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+[data-theme="dark"] .workspace-voice:not(.compact-voice) {
+  background: var(--card);
+}
+[data-theme="dark"]
+  :is(
+    input,
+    textarea,
+    select,
+    .workspace-main select,
+    .workspace-form input,
+    .workspace-form textarea,
+    .workspace-composer input
+  ) {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+[data-theme="dark"]
+  :is(
+    .workspace-panel p,
+    .behind-scenes p,
+    .workspace-form label,
+    .empty-conversation,
+    .empty-conversation h3,
+    .workspace-message small,
+    .reference-code,
+    .visit-notes dt,
+    .pending-card dt,
+    .calendar-weekday,
+    .calendar-grid button small,
+    .behind-scenes summary,
+    .workspace-transcript .workspace-toolbar small,
+    .action-receipt dt,
+    .mira-activity small
+  ) {
+  color: var(--muted);
+}
+[data-theme="dark"]
+  .workspace-main
+  button:not(.primary-action):not(.nav-item):not(.user-pill) {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+[data-theme="dark"] .workspace-main button:not(.primary-action):hover {
+  border-color: #75a48b;
+}
+[data-theme="dark"]
+  :is(
+    .visit-card,
+    .appointment-calendar,
+    .workspace-transcript,
+    .workspace-transcript .workspace-toolbar
+  ) {
+  border-color: var(--border);
+}
+[data-theme="dark"] .workspace-message {
+  background: #23352b;
+}
+[data-theme="dark"] .workspace-message.user {
+  background: #2b4837;
+}
+[data-theme="dark"]
+  :is(.visit-status, .workspace-notice, .mira-activity-status) {
+  background: #284631;
+  color: #c0e4c5;
+}
+[data-theme="dark"]
+  :is(.visit-status.cancelled, .alert-error, .is-failed .mira-activity-status) {
+  background: #452d29;
+  color: #f3b8aa;
+  border-color: #785044;
+}
+[data-theme="dark"]
+  :is(
+    .request-banner,
+    .pending-card,
+    .pwa-offline,
+    .is-review .mira-activity-status
+  ) {
+  background: #383521;
+  color: #e9dca6;
+  border-color: #605b39;
+}
+[data-theme="dark"] .credentials-card {
+  background: #203a31;
+}
+[data-theme="dark"] .calendar-grid button[aria-pressed="true"] {
+  background: #2b4837 !important;
+  border-color: #8eb59a !important;
+}
+[data-theme="dark"]
+  :is(
+    .pwa-install,
+    .pwa-ios summary,
+    .resume-request,
+    .mira-activity,
+    .language-picker-panel,
+    .language-search,
+    .language-picker-trigger
+  ) {
+  background: var(--card);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+[data-theme="dark"]
+  :is(
+    .language-picker-panel p,
+    .language-picker-panel small,
+    .language-picker-panel footer,
+    .language-search input,
+    .language-option,
+    .language-option span
+  ) {
+  color: var(--foreground);
+}
+[data-theme="dark"]
+  :is(.language-option:hover, .language-option[aria-selected="true"]) {
+  background: var(--accent);
+}
+[data-theme="dark"]
+  :is(.workspace-footer a, .sidebar-bottom a, .recovery-card a) {
+  color: #a1d4b5;
+}
+[data-theme="dark"] .recovery-page {
+  background: var(--background);
+}
+/* Preserve the green call surface and the contrast of its controls. */
+[data-theme="dark"] .workspace-main .voice-intro button:not(.primary-action) {
+  background: #ffffff12;
+  color: #eff9eb;
+  border-color: #ffffff30;
+}
+[data-theme="dark"]
+  .workspace-main
+  .voice-intro
+  .call-controls
+  button[aria-pressed="true"] {
+  background: #e4eed7;
+  color: #294b36;
+}
+[data-theme="dark"] .workspace-main .voice-intro .call-controls .end-call {
+  background: #f2b7a7;
+  color: #642b22;
+}
+[data-theme="dark"] .workspace-main .language-picker-trigger {
+  background: #203b2d;
+  color: #e2eee6;
+}
+@media (max-width: 600px) {
+  .appearance-options {
+    grid-template-columns: 1fr;
+  }
+  .appearance-option {
+    padding: 18px;
+  }
+  [data-theme="dark"] .sidebar nav {
+    background: #14201af5;
+    border-color: var(--border);
+  }
+}

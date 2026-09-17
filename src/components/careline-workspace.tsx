@@ -10,6 +10,7 @@ import {
   PhoneOff,
   Plus,
   Send,
+  Settings,
   Stethoscope,
   UserRound,
   Volume2,
@@ -18,6 +19,7 @@ import {
 import { doctors, type Message, type Slot } from "@/lib/clinic";
 import type {
   Account,
+  ActionReceipt,
   ActionResult,
   Mutation,
   Navigation,
@@ -25,12 +27,23 @@ import type {
   Visit,
 } from "@/lib/workspace";
 import { AccountWorkspace } from "./account-workspace";
+import { AppearanceSettings } from "./appearance-settings";
+import { useAppearance } from "./appearance-provider";
 import { AppointmentWorkspace } from "./appointment-workspace";
 import { useRealtimeVoice } from "./use-realtime-voice";
 import { LanguagePicker } from "./language-picker";
 import { PwaControls } from "./pwa-controls";
 import { type ReplyLanguage } from "@/lib/voice-language";
 import type { ActionActivity } from "@/lib/action-activity";
+const detailLabels: Record<string, string> = {
+  name: "Full name",
+  dateOfBirth: "Date of birth",
+  gender: "Gender",
+  phone: "Phone",
+  email: "Email",
+  notes: "Appointment notes",
+  reason: "Reason",
+};
 async function api<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(path, {
     method: body ? "POST" : "GET",
@@ -44,6 +57,8 @@ async function api<T>(path: string, body?: unknown): Promise<T> {
 }
 export function CarelineWorkspace() {
   const [user, setUser] = useState<Account | null>(null);
+  const { setAccountId } = useAppearance();
+  useEffect(() => { setAccountId(user?.id || null); }, [user?.id, setAccountId]);
   const [display, setDisplay] = useState<Navigation>({
     page: "reception",
     mode: "list",
@@ -67,6 +82,7 @@ export function CarelineWorkspace() {
   }>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [receipt, setReceipt] = useState<ActionReceipt>();
   const [authEmail, setAuthEmail] = useState("");
   const [resumeRequest, setResumeRequest] = useState("");
   const authReturnTo = useRef<Navigation | undefined>(undefined);
@@ -140,6 +156,7 @@ export function CarelineWorkspace() {
     });
   }, [messages]);
   const applyEffect = async (effect: ActionResult) => {
+    if (effect.receipt) setReceipt(effect.receipt);
     if (Array.isArray(effect.searchResults)) {
       setSearch({
         scope: String(effect.scope),
@@ -190,6 +207,8 @@ export function CarelineWorkspace() {
         voice.stop();
       }
       if (effect.signedOut) {
+        setReceipt(undefined);
+        setTraces([]);
         setSearch(undefined);
         guestRequest.current = "";
         authReturnTo.current = undefined;
@@ -200,7 +219,13 @@ export function CarelineWorkspace() {
         replaceMessages([]);
         setDisplay({ page: "reception" });
       }
-      await refresh();
+      try {
+        await refresh();
+      } catch {
+        setError(
+          "Your action completed, but the page could not refresh. Check your connection and refresh to see the latest data.",
+        );
+      }
     }
   };
   const voice = useRealtimeVoice({
@@ -294,6 +319,8 @@ export function CarelineWorkspace() {
     await historyQueue.current;
     const result = await api<ActionResult>("/api/auth", value);
     setSearch(undefined);
+    setReceipt(undefined);
+    setTraces([]);
     setPending(undefined);
     voice.setDraft();
     setCredentials(result.credentials);
@@ -320,6 +347,7 @@ export function CarelineWorkspace() {
       ? [{ id: "doctor", label: "Doctor panel", icon: Stethoscope }]
       : []),
     { id: "account", label: "My account", icon: UserRound },
+    { id: "settings", label: "Settings", icon: Settings },
   ];
   return (
     <div className="app-shell careline-workspace">
@@ -512,13 +540,15 @@ export function CarelineWorkspace() {
                   {voice.connecting
                     ? "Connecting your call..."
                     : voice.active
-                      ? voice.muted
-                        ? "Microphone muted"
-                        : voice.status.startsWith("Speaking")
-                          ? "Mira is speaking"
-                          : voice.status.startsWith("Thinking")
-                            ? "Mira is working on it"
-                            : "Your turn. Mira is listening."
+                      ? voice.status.startsWith("Connection interrupted")
+                        ? voice.status
+                        : voice.muted
+                          ? "Microphone muted"
+                          : voice.status.startsWith("Speaking")
+                            ? "Mira is speaking"
+                            : voice.status.startsWith("Thinking")
+                              ? "Mira is working on it"
+                              : "Your turn. Mira is listening."
                       : "A little conversation. A lot taken care of."}
                 </p>
               </div>
@@ -701,6 +731,48 @@ export function CarelineWorkspace() {
               </button>
             </form>
           )}
+          {receipt && (
+            <section
+              className="action-receipt workspace-panel"
+              aria-label="Action receipt"
+              role="status"
+            >
+              <span className="eyebrow">CONFIRMED</span>
+              <h2>{receipt.title}</h2>
+              <p>{receipt.summary}</p>
+              <dl>
+                {receipt.fields.map((field) => (
+                  <div key={field.label}>
+                    <dt>{field.label}</dt>
+                    <dd>{field.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="workspace-actions">
+                {[
+                  "book",
+                  "reschedule",
+                  "cancel",
+                  "request_reschedule",
+                ].includes(receipt.action) && (
+                  <button
+                    onClick={() =>
+                      setDisplay({
+                        page:
+                          user?.role === "doctor" ? "doctor" : "appointments",
+                        mode: "list",
+                      })
+                    }
+                  >
+                    View appointments
+                  </button>
+                )}
+                <button onClick={() => setReceipt(undefined)}>
+                  Dismiss receipt
+                </button>
+              </div>
+            </section>
+          )}
           {credentials && (
             <section
               className="credentials-card"
@@ -736,7 +808,7 @@ export function CarelineWorkspace() {
                   .filter(([k]) => !["action", "id", "slotId"].includes(k))
                   .map(([key, value]) => (
                     <div key={key}>
-                      <dt>{key}</dt>
+                      <dt>{detailLabels[key] || key}</dt>
                       <dd>
                         {value !== null && typeof value === "object"
                           ? Object.entries(value).map(([k, v]) => (
@@ -833,16 +905,23 @@ export function CarelineWorkspace() {
                 </button>
               </div>
             ))}
+          {display.page === "settings" && <AppearanceSettings signedIn={Boolean(user)} />}
           {display.page === "account" && (
             <AccountWorkspace
-              key={`${user?.id || "guest"}-${display.accountSection || "profile"}-${authEmail}`}
+              key={`${user?.id || "guest"}-${display.accountSection || "profile"}-${authEmail}-${JSON.stringify([user?.name, user?.phone, user?.dateOfBirth, user?.gender])}`}
               user={user}
               initialEmail={authEmail}
               section={display.accountSection}
               onAuth={authenticate}
               onPrepare={(p) => void prepare(p)}
               onPassword={async (p) => {
-                await api("/api/auth", { action: "password", ...p });
+                voice.stop();
+                await applyEffect(
+                  await api<ActionResult>("/api/auth", {
+                    action: "password",
+                    ...p,
+                  }),
+                );
               }}
             />
           )}
@@ -905,8 +984,8 @@ export function CarelineWorkspace() {
             </div>
             <p>
               Typed conversations use the OpenAI Responses API. Voice uses{" "}
-              {"gpt-realtime"} by default. This is a fictional scheduling demo,
-              not a medical consultation.
+              {"gpt-realtime-2"} by default. This is a fictional scheduling
+              demo, not a medical consultation.
             </p>
             <details className="mira-activity" open>
               <summary>
@@ -950,9 +1029,9 @@ export function CarelineWorkspace() {
                               ? "Awaiting approval"
                               : t.status === "signin"
                                 ? "Sign-in needed"
-                              : t.status === "failed"
-                                ? "Unsuccessful"
-                                : "Completed"}
+                                : t.status === "failed"
+                                  ? "Unsuccessful"
+                                  : "Completed"}
                           </span>
                         </div>
                         <p>{t.detail}</p>

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { makeReceipt } from "@/lib/action-receipt";
 import { patientDetails } from "@/lib/patient";
 import { authorizeAI } from "@/lib/server";
 import { registerAccount } from "@/lib/workspace-server";
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
       .object({
         action: z.enum(["signin", "signup", "signout", "profile", "password"]),
         email: z.string().trim().min(3).max(254).optional(),
-        password: z.string().min(8).max(128).optional(),
+        password: z.string().min(1).max(128).optional(),
         name: z.string().trim().min(2).max(60).optional(),
       })
       .parse(raw);
@@ -39,6 +41,8 @@ export async function POST(req: Request) {
     if (p.action === "signup") {
       const details = patientDetails.parse(raw);
       const password = z.string().min(10).max(128).parse(raw.password);
+      if (raw.confirmPassword !== undefined && password !== raw.confirmPassword)
+        throw new HttpError(400, "Passwords do not match.");
       const visitor = await authorizeAI();
       if (!visitor.guest)
         throw new HttpError(409, "Sign out before creating another account.");
@@ -50,19 +54,38 @@ export async function POST(req: Request) {
       const visitor = await session();
       if (visitor.guest) throw new HttpError(401, "Sign in first.");
       const password = z.string().min(10).max(128).parse(raw.password);
+      if (raw.confirmPassword !== undefined && password !== raw.confirmPassword)
+        throw new HttpError(400, "Passwords do not match.");
       const currentPassword = z
         .string()
         .min(1)
         .max(128)
         .parse(raw.currentPassword);
+      // Verify explicitly: the hosted Auth version may ignore current_password.
       const { error: check } = await supabase.auth.signInWithPassword({
         email: visitor.email!,
         password: currentPassword,
       });
       if (check) throw new HttpError(400, "Current password is incorrect.");
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw new HttpError(400, "Could not change password.");
-      return Response.json({ ok: true });
+      const { error } = await supabase.auth.updateUser({
+        password,
+      });
+      if (error)
+        throw new HttpError(
+          400,
+          "Could not change password. Check your current password and choose a different new password.",
+        );
+      return Response.json(
+        {
+          ok: true,
+          receipt: {
+            ...makeReceipt("change_password", { id: randomUUID() }),
+            summary: "Your new password is now active.",
+          },
+          message: "Password changed.",
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     if (p.action === "signout") {
       await supabase.auth.signOut();

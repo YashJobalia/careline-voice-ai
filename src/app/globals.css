@@ -3049,3 +3049,16 @@ h1 em {
 .is-review .mira-activity-status { background: #fff0d4; color: #795313; }
 .is-failed .mira-activity-status { background: #fbe6e2; color: #923c31; }
 .mira-activity small { color: #52695c; font-size: 12px; }
+.recovery-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: #eef5ef; }
+.recovery-card { width: min(100%, 520px); margin-inline: auto; }
+.recovery-card h1 { font-size: clamp(24px, 5vw, 34px); line-height: 1.2; }
+.recovery-card a { color: #24553f; text-decoration: underline; }
+.recovery-card form { margin-block: 24px; }
+.recovery-card .primary-action { min-height: 48px; padding: 12px 18px; border: 0; border-radius: 12px; color: #fff; background: #204f3b; font: inherit; font-weight: 600; cursor: pointer; }
+.recovery-card .primary-action:disabled { opacity: .6; cursor: wait; }
+.recovery-card input { font: inherit; min-height: 46px; }
+.action-receipt { border-left: 4px solid #3f7955; }
+.action-receipt dl { display: grid; gap: 12px; }
+.action-receipt dl > div { display: grid; grid-template-columns: minmax(80px, 110px) 1fr; gap: 12px; }
+.action-receipt dt { color: #52695c; font-size: 13px; }
+.action-receipt dd { margin: 0; overflow-wrap: anywhere; }

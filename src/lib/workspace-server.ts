@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
+import { makeReceipt } from "./action-receipt";
 import { createClient } from "@supabase/supabase-js";
 import { db, HttpError, session, sign, verify, type Session } from "./server";
 import { supabaseServer } from "./supabase";
@@ -16,6 +17,7 @@ import {
 } from "./workspace";
 import { patientDetails } from "./patient";
 import { miraCapabilities } from "./mira-capabilities";
+import { requestPasswordReset } from "./password-recovery";
 
 function describeVisit(visit: Visit) {
   return {
@@ -86,6 +88,7 @@ async function accessibleVisit(user: Session, id: string, clinic = false) {
   return visit;
 }
 async function validate(user: Session, p: Mutation) {
+  if (p.action === "reset_password") return;
   if (p.action === "register") {
     if (!user.guest) throw new HttpError(409, "You already have an account.");
     return;
@@ -207,7 +210,10 @@ export async function registerAccount(
       : { email: result.email, password: result.password },
   };
 }
-export async function workspaceAction(raw: unknown): Promise<ActionResult> {
+export async function workspaceAction(
+  raw: unknown,
+  origin?: string,
+): Promise<ActionResult> {
   const user = await session();
   const envelope = z
     .object({
@@ -377,19 +383,41 @@ export async function workspaceAction(raw: unknown): Promise<ActionResult> {
     const details = mutation.parse(args);
     if (
       user.guest &&
-      !["register", "signout", "clear_history"].includes(details.action)
+      !["register", "signout", "clear_history", "reset_password"].includes(
+        details.action,
+      )
     )
       return requireAccount({
         page: details.action === "book" ? "appointments" : "account",
         ...(details.action === "book" ? { booking: true } : {}),
       });
     await validate(user, details);
-    let summary = details.action.replaceAll("_", " ");
+    const summaries: Partial<Record<Mutation["action"], string>> = {
+      update_profile: "Review account changes",
+      change_password: "Generate a new password",
+      reset_password: "Request a password reset email",
+      register: "Create your patient account",
+      clear_history: "Permanently clear saved conversation",
+      signout: "Sign out of your account",
+    };
+    let summary =
+      summaries[details.action] || details.action.replaceAll("_", " ");
+    if (
+      details.action === "cancel" ||
+      details.action === "request_reschedule"
+    ) {
+      const visit = await accessibleVisit(
+        user,
+        details.id,
+        user.role === "doctor",
+      );
+      summary = `${details.action === "cancel" ? "Cancel" : "Request rescheduling for"} ${visit.appointment_code}: ${doctors.find((d) => d.id === visit.slot.doctor_id)?.name}, ${formatSlot(visit.slot)} (America/Chicago)`;
+    }
     if (details.action === "book" || details.action === "reschedule") {
       const slot = (await availableSlots()).find(
         (s) => s.id === details.slotId,
       )!;
-      summary = `${details.action === "book" ? "Book" : "Move appointment to"} ${doctors.find((d) => d.id === slot.doctor_id)?.name}, ${formatSlot(slot)}`;
+      summary = `${details.action === "book" ? "Book" : "Move appointment to"} ${doctors.find((d) => d.id === slot.doctor_id)?.name}, ${formatSlot(slot)} (America/Chicago)`;
     }
     return {
       pending: {
@@ -417,7 +445,50 @@ export async function workspaceAction(raw: unknown): Promise<ActionResult> {
     throw new HttpError(403, "This action belongs to another account.");
   const p = mutation.parse(signed.details);
   await validate(user, p);
-  if (p.action === "register") return registerAccount(p);
+  const claimed = await db<boolean>("rpc/careline_claim_confirmation", {
+    method: "POST",
+    body: JSON.stringify({
+      token_hash: createHash("sha256").update(envelope.token).digest("hex"),
+    }),
+  });
+  if (!claimed)
+    throw new HttpError(
+      409,
+      "This confirmation has already been attempted. Check your current appointments or account details before preparing a new change.",
+    );
+  const receiptId = randomUUID();
+  const oldVisit =
+    ["reschedule", "cancel", "request_reschedule"].includes(p.action) &&
+    "id" in p
+      ? await accessibleVisit(
+          user,
+          p.id,
+          user.role === "doctor" && p.action !== "reschedule",
+        )
+      : undefined;
+  const targetSlot =
+    p.action === "book" || p.action === "reschedule"
+      ? (await availableSlots()).find((s) => s.id === p.slotId)
+      : oldVisit?.slot;
+  if ((p.action === "book" || p.action === "reschedule") && !targetSlot)
+    throw new HttpError(
+      409,
+      "That slot is no longer available. Please choose another time.",
+    );
+  const receipt = makeReceipt(p.action, {
+    id: receiptId,
+    slot: targetSlot,
+    reference: oldVisit?.appointment_code,
+    previousSlot: p.action === "reschedule" ? oldVisit?.slot : undefined,
+  });
+  if (p.action === "reset_password") {
+    if (!origin)
+      throw new HttpError(400, "Open the password reset form in My account.");
+    const result = await requestPasswordReset(p.email, origin);
+    return { ...result, receipt: { ...receipt, summary: result.message } };
+  }
+  if (p.action === "register")
+    return { ...(await registerAccount(p)), receipt };
   if (p.action === "book") {
     const rows = await db<{ appointment_code: string }[]>(
       "careline_appointments",
@@ -433,7 +504,12 @@ export async function workspaceAction(raw: unknown): Promise<ActionResult> {
     );
     return {
       ok: true,
-      message: `Appointment confirmed. Reference ${rows[0].appointment_code}.`,
+      receipt: makeReceipt("book", {
+        id: receiptId,
+        slot: targetSlot,
+        reference: rows[0].appointment_code,
+      }),
+      message: `Appointment confirmed with ${doctors.find((d) => d.id === targetSlot!.doctor_id)?.name}, ${formatSlot(targetSlot!)} (America/Chicago). Reference ${rows[0].appointment_code}.`,
     };
   }
   if (p.action === "reschedule") {
@@ -482,6 +558,7 @@ export async function workspaceAction(raw: unknown): Promise<ActionResult> {
       );
     return {
       ok: true,
+      receipt,
       message:
         "Password changed. Save the new password shown privately on screen.",
       credentials: { email: user.email!, password },
@@ -492,19 +569,18 @@ export async function workspaceAction(raw: unknown): Promise<ActionResult> {
     });
     return {
       ok: true,
+      receipt,
       clearedHistory: true,
       message: "Saved conversation cleared.",
     };
   } else if (p.action === "signout") {
     const { error } = await (await supabaseServer()).auth.signOut();
     if (error) throw new HttpError(503, "Sign out failed. Please retry.");
-    return { ok: true, signedOut: true, message: "Signed out." };
+    return { ok: true, receipt, signedOut: true, message: "Signed out." };
   }
   return {
     ok: true,
-    message:
-      p.action === "request_reschedule"
-        ? "Reschedule request saved. The patient will see it in their appointments. Their slot remains reserved."
-        : "Changes saved.",
+    receipt,
+    message: `${receipt.title}. ${receipt.fields.map((f) => `${f.label}: ${f.value}`).join(". ")} ${receipt.summary}`,
   };
 }

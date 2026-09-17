@@ -8,6 +8,9 @@ import { replyLanguages } from "@/lib/voice-language";
 import { actionActivity, type ActionActivity } from "@/lib/action-activity";
 export const maxDuration = 60;
 export async function POST(req: Request) {
+  const effects: ActionResult[] = [];
+  const traces: ActionActivity[] = [];
+  const started = performance.now();
   try {
     sameOrigin(req);
     const user = await authorizeAI();
@@ -23,9 +26,6 @@ export async function POST(req: Request) {
       ...previous.slice(-40),
       { role: "user", content: p.message },
     ];
-    const effects: ActionResult[] = [];
-    const traces: ActionActivity[] = [];
-    const started = performance.now();
     for (let round = 0; round < 8; round++) {
       const r = await fetch("https://api.openai.com/v1/responses", {
         method: "POST",
@@ -102,11 +102,14 @@ export async function POST(req: Request) {
             throw new Error(
               "Ask the user to confirm an existing draft first. New drafts cannot be confirmed in the same turn.",
             );
-          const effect = await workspaceAction({
-            action: a.action,
-            args: a.args,
-            token: a.token || undefined,
-          });
+          const effect = await workspaceAction(
+            {
+              action: a.action,
+              args: a.args,
+              token: a.token || undefined,
+            },
+            new URL(req.url).origin,
+          );
           effects.push(effect);
           const { credentials, ...safe } = effect;
           output = {
@@ -137,6 +140,17 @@ export async function POST(req: Request) {
       "The assistant could not finish this request. Please try a shorter request.",
     );
   } catch (e) {
+    // A model/network failure after a tool succeeds must not hide committed changes.
+    if (effects.length)
+      return Response.json(
+        {
+          text: "I could not finish the spoken or written explanation. Please review the action results shown on screen before trying again.",
+          effects,
+          traces,
+          totalMs: Math.round(performance.now() - started),
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     return failure(e);
   }
 }

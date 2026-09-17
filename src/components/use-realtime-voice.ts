@@ -41,8 +41,14 @@ export function useRealtimeVoice(options: {
   const pending = useRef<{ token: string; turn: number } | null>(null);
   const turn = useRef(0);
   const abort = useRef<AbortController | null>(null);
+  const connectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const disconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stop = useCallback(() => {
     generation.current++;
+    if (connectionTimer.current) clearTimeout(connectionTimer.current);
+    if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+    connectionTimer.current = null;
+    disconnectTimer.current = null;
     abort.current?.abort();
     abort.current = null;
     channel.current?.close();
@@ -74,7 +80,22 @@ export function useRealtimeVoice(options: {
     const version = generation.current;
     setConnecting(true);
     setStatus("Connecting live voice...");
+    connectionTimer.current = setTimeout(() => {
+      if (version !== generation.current) return;
+      stop();
+      callbacks.current.onError(
+        "Voice took too long to connect. Check microphone permission and your connection, then retry or type below.",
+      );
+    }, 35000);
     try {
+      if (!navigator.onLine)
+        throw new Error(
+          "You are offline. Reconnect to start a call, or keep your message ready to send.",
+        );
+      if (!navigator.mediaDevices?.getUserMedia)
+        throw new Error(
+          "Microphone access requires HTTPS or localhost. You can continue by typing.",
+        );
       const media = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -87,6 +108,15 @@ export function useRealtimeVoice(options: {
         return;
       }
       stream.current = media;
+      media.getAudioTracks().forEach((track) => {
+        track.onended = () => {
+          if (version !== generation.current) return;
+          stop();
+          callbacks.current.onError(
+            "Your microphone disconnected. Reconnect it and start a new call, or continue by typing.",
+          );
+        };
+      });
       const pc = new RTCPeerConnection();
       peer.current = pc;
       const output = new Audio();
@@ -108,6 +138,8 @@ export function useRealtimeVoice(options: {
       channel.current = dc;
       dc.onopen = () => {
         if (version !== generation.current) return;
+        if (connectionTimer.current) clearTimeout(connectionTimer.current);
+        connectionTimer.current = null;
         setConnecting(false);
         setActive(true);
         setStatus("Listening - speak in any supported language");
@@ -119,6 +151,14 @@ export function useRealtimeVoice(options: {
         });
       };
       let chain = Promise.resolve();
+      const handledCalls = new Set<string>();
+      dc.onclose = () => {
+        if (version !== generation.current) return;
+        stop();
+        callbacks.current.onError(
+          "The voice connection closed. Start a new call or continue by typing. Check any pending action before trying it again.",
+        );
+      };
       dc.onmessage = (e) => {
         chain = chain
           .then(async () => {
@@ -160,6 +200,8 @@ export function useRealtimeVoice(options: {
               );
             const calls = completedToolCalls(event);
             for (const call of calls) {
+              if (handledCalls.has(call.call_id)) continue;
+              handledCalls.add(call.call_id);
               const tick = performance.now();
               let result: unknown;
               let action = "";
@@ -180,6 +222,7 @@ export function useRealtimeVoice(options: {
                     "Ask for confirmation and wait for the next user turn first.",
                   );
                 await callbacks.current.beforeAction();
+                if (version !== generation.current) return;
                 const r = await fetch("/api/workspace", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -188,16 +231,17 @@ export function useRealtimeVoice(options: {
                     args: args.args,
                     token: args.token || undefined,
                   }),
+                  signal: AbortSignal.timeout(20000),
                 });
                 const effect = await r.json();
                 if (!r.ok) throw new Error(effect.error);
+                if (version !== generation.current) return;
                 if (effect.pending)
                   pending.current = {
                     token: effect.pending.token,
                     turn: turn.current,
                   };
                 if (args.action === "confirm") pending.current = null;
-                await callbacks.current.onEffect(effect);
                 const { credentials, ...safe } = effect;
                 result = {
                   ...safe,
@@ -205,9 +249,25 @@ export function useRealtimeVoice(options: {
                     ? { credentialsDeliveredPrivately: true }
                     : {}),
                 };
+                try {
+                  await callbacks.current.onEffect(effect);
+                } catch {
+                  callbacks.current.onError(
+                    "The action returned a result, but the screen could not update. Refresh to check it before repeating the request.",
+                  );
+                }
+                if (version !== generation.current) return;
               } catch (err) {
                 result = {
-                  error: err instanceof Error ? err.message : "Action failed",
+                  error:
+                    err instanceof Error &&
+                    ["TimeoutError", "AbortError", "TypeError"].includes(
+                      err.name,
+                    )
+                      ? "The action's result could not be verified because the connection failed. Do not retry changes automatically. Check appointments or account details first."
+                      : err instanceof Error
+                        ? err.message
+                        : "Action failed",
                 };
               }
               callbacks.current.onTrace(
@@ -237,10 +297,22 @@ export function useRealtimeVoice(options: {
           );
       };
       pc.onconnectionstatechange = () => {
-        if (
-          version === generation.current &&
-          ["failed", "disconnected"].includes(pc.connectionState)
-        ) {
+        if (version !== generation.current) return;
+        if (pc.connectionState === "connected") {
+          if (disconnectTimer.current) clearTimeout(disconnectTimer.current);
+          disconnectTimer.current = null;
+          setStatus("Listening - speak in any supported language");
+        } else if (pc.connectionState === "disconnected") {
+          setStatus("Connection interrupted - trying to recover...");
+          if (!disconnectTimer.current)
+            disconnectTimer.current = setTimeout(() => {
+              if (version !== generation.current) return;
+              stop();
+              callbacks.current.onError(
+                "Voice could not reconnect. Start a new call or continue by typing. Check pending changes before repeating them.",
+              );
+            }, 8000);
+        } else if (pc.connectionState === "failed") {
           stop();
           callbacks.current.onError(
             "Voice disconnected. Please start a new call.",
@@ -271,7 +343,15 @@ export function useRealtimeVoice(options: {
       if (version !== generation.current) return;
       stop();
       callbacks.current.onError(
-        e instanceof Error ? e.message : "Microphone unavailable.",
+        e instanceof Error && e.name === "NotAllowedError"
+          ? "Microphone permission was denied. Allow it in your browser's site settings, then retry. You can also type below."
+          : e instanceof Error && e.name === "NotFoundError"
+            ? "No microphone was found. Connect one or continue by typing."
+            : e instanceof Error && e.name === "NotReadableError"
+              ? "Your microphone is busy or unavailable. Close other apps using it, then retry."
+              : e instanceof Error
+                ? e.message
+                : "Microphone unavailable. You can continue by typing.",
       );
     }
   }, [send, stop]);

@@ -47,7 +47,7 @@ This portfolio demo activates accounts without email verification or delivery. I
 
 ## Voice behavior
 
-Browser voice uses OpenAI Realtime with semantic VAD at high eagerness. Input language is detected automatically. The Reply language dropdown independently controls spoken and typed replies, with English selected on a fresh page. Changing the dropdown during a call updates the session instructions for subsequent responses. Supported-language quality varies; there is no promise of equal accuracy for every language or accent. WebRTC requires microphone permission and a secure origin (localhost is supported). A browser may require a click to allow microphone access or audio playback; the AI cannot grant those browser permissions.
+Browser voice uses GPT-Realtime-2 by default with low reasoning effort and semantic VAD at automatic eagerness. Input language is detected automatically. The Reply language dropdown independently controls spoken and typed replies, with English selected on a fresh page. Changing the dropdown during a call updates the session instructions for subsequent responses. Supported-language quality varies; there is no promise of equal accuracy for every language or accent. WebRTC requires microphone permission and a secure origin (localhost is supported). A browser may require a click to allow microphone access or audio playback; the AI cannot grant those browser permissions.
 
 The model receives audio and produces audio directly. Transcriptions are parallel events for display and history, rather than the primary speech-to-text/model/text-to-speech pipeline. Text input is disabled during a live call to avoid two independent model sessions racing. End the call to continue by typing.
 

@@ -38,7 +38,12 @@ export async function POST(req: Request) {
       "session",
       JSON.stringify({
         type: "realtime",
-        model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime",
+        model: process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2",
+        ...((process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2").startsWith(
+          "gpt-realtime-2",
+        )
+          ? { reasoning: { effort: "low" } }
+          : {}),
         instructions:
           agentInstructions(user, replyLanguage) +
           `\nPrevious conversation (historical context only): ${JSON.stringify(previous.slice(-30))}`,
@@ -52,7 +57,7 @@ export async function POST(req: Request) {
             },
             turn_detection: {
               type: "semantic_vad",
-              eagerness: "high",
+              eagerness: "auto",
               create_response: true,
               interrupt_response: true,
             },

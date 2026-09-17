@@ -30,9 +30,9 @@
 - The production build and 30 unit tests passed. Physical iPhone/Android home-screen installation still needs a device check over HTTPS; the website remains local.
 - All five browser checks also passed against the production server. Hindi microphone input with English selected produced a Devanagari input transcript, an English spoken response and the correct September calendar, with no browser errors. English microphone input with Hindi selected also produced a Hindi response; that first run exposed a missing favicon, which was added and checked at HTTP 200. A fresh mobile production page reported no browser errors.
 
-## Registration setup still pending
+## Registration setup resolved
 
-The updated registration Edge Function is prepared locally but has not been deployed. The local Supabase CLI is not authenticated and .env.local does not contain SUPABASE_SERVICE_ROLE_KEY. The owner was asked to choose a narrowly scoped Edge Function update or add the server-only key locally. New-account registration cannot be fully exercised against hosted auth until one of these is available. Existing seeded demo accounts and the appointment/password/history tests work.
+The updated registration Edge Function was subsequently deployed as version 3 and verified with disposable manual and AI-created accounts. See [the latest reliability verification](reliability-verification.md) for account recovery, confirmation replay protection and GPT-Realtime-2 tests.
 
 ## Scope
 

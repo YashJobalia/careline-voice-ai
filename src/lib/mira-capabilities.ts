@@ -18,6 +18,7 @@ export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
       "Read the specialist directory and live availability",
       "Look up an account by exact email or full international phone, limited to 10 checks per session per hour",
       "Open private sign-in or manual signup",
+      "Open password recovery or request a reset email after reviewing the exact address and confirming; delivery is not guaranteed",
       "Guide new patient registration with name, DOB, email, phone and explicit confirmation",
     ],
     permittedActions: user.guest
@@ -47,7 +48,7 @@ export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
       "No self-assigned doctor roles or identity switching through conversation",
       "Doctors cannot edit another patient's profile/password or directly move their appointment",
       "Changes require review and confirmation; a draft does not reserve a slot",
-      "No email/SMS delivery, live human transfer, billing or insurance processing",
+      "No appointment email/SMS notifications, live human transfer, billing or insurance processing; password reset emails are requested through Supabase Auth",
       "No medical diagnosis, prescriptions or real clinic address",
       "Browser microphone permission, private password entry and PWA installation require the user",
       "The Reply language dropdown controls output; input language stays automatic",

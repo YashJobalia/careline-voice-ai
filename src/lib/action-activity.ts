@@ -7,6 +7,7 @@ export type ActionActivity = {
 };
 
 const labels: Record<string, string> = {
+  reset_password: "Request a password reset",
   get_capabilities: "Check account permissions",
   lookup_account: "Look up an account",
   start_signin: "Open sign-in",
@@ -44,8 +45,13 @@ export function actionActivity(
       ? (result as Record<string, unknown>)
       : {};
   const lookup = data.accountLookup as { status?: string } | undefined;
-  const failed = Boolean(data.error) || data.ok === false || lookup?.status === "rate_limited";
-  const signin = Boolean(data.authentication) && !["lookup_account", "start_signin"].includes(action);
+  const failed =
+    Boolean(data.error) ||
+    data.ok === false ||
+    lookup?.status === "rate_limited";
+  const signin =
+    Boolean(data.authentication) &&
+    !["lookup_account", "start_signin"].includes(action);
   const review = !failed && Boolean(data.pending);
   const operation =
     action === "prepare" && typeof args.action === "string"
@@ -68,10 +74,17 @@ export function actionActivity(
         break;
       }
     }
-    if (lookup?.status === "found") detail = "Matching account found. Sign-in is required to access it.";
-    if (lookup?.status === "not_found") detail = "No account matched the supplied contact.";
-    if (action === "start_signin") detail = data.authentication ? "Private sign-in form opened." : "Already signed in.";
-    if (signin) detail = "Sign in to continue. No private records were accessed or changed.";
+    if (lookup?.status === "found")
+      detail = "Matching account found. Sign-in is required to access it.";
+    if (lookup?.status === "not_found")
+      detail = "No account matched the supplied contact.";
+    if (action === "start_signin")
+      detail = data.authentication
+        ? "Private sign-in form opened."
+        : "Already signed in.";
+    if (signin)
+      detail =
+        "Sign in to continue. No private records were accessed or changed.";
     if (action === "navigate") {
       const nav = data.navigation as Record<string, unknown> | undefined;
       const pages: Record<string, string> = {
@@ -85,9 +98,23 @@ export function actionActivity(
     }
   }
   return {
-    label: labels[operation] || "Process a request",
+    label:
+      !failed &&
+      data.receipt &&
+      typeof data.receipt === "object" &&
+      "action" in data.receipt
+        ? labels[String(data.receipt.action)] ||
+          labels[operation] ||
+          "Process a request"
+        : labels[operation] || "Process a request",
     detail,
-    status: failed ? "failed" : signin ? "signin" : review ? "review" : "completed",
+    status: failed
+      ? "failed"
+      : signin
+        ? "signin"
+        : review
+          ? "review"
+          : "completed",
     source,
     durationMs: Math.max(0, Math.round(durationMs)),
   };
