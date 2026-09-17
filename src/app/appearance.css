@@ -1,4 +1,4 @@
-﻿/* CareLine appearance: warm daylight and a calm charcoal night palette. */
+/* CareLine appearance: warm daylight and a calm charcoal night palette. */
 :root {
   color-scheme: light;
   --background: #f5f4f0;
@@ -613,4 +613,155 @@ body {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Shared, themed pickers for account details. */
+.form-picker {
+  display: block;
+  min-width: 0;
+}
+.careline-workspace .workspace-main .form-picker .form-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--input);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+.form-picker-trigger > span:first-child {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.form-picker-trigger > svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.careline-workspace
+  .workspace-main
+  .form-picker
+  .form-picker-trigger:is(:hover, [aria-expanded="true"]) {
+  border-color: var(--primary);
+  background: var(--surface-soft);
+}
+.careline-workspace
+  .workspace-main
+  .form-picker
+  .form-picker-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.form-picker-panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 6px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 16px 48px #00000026;
+  font-family: "Segoe UI", sans-serif;
+}
+.form-picker-panel:popover-open {
+  display: flex;
+  flex-direction: column;
+}
+.form-picker-panel .form-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  margin: 2px 2px 6px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.form-picker-panel .form-picker-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  box-shadow: none;
+}
+.form-picker-search input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+.form-picker-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.careline-workspace
+  .workspace-main
+  .form-picker-panel
+  .form-picker-list
+  button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin: 2px 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.form-picker-list button > span:first-child {
+  flex: 1;
+}
+.form-picker-code {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.careline-workspace
+  .workspace-main
+  .form-picker-panel
+  .form-picker-list
+  button:is([data-active="true"], [aria-selected="true"]) {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.careline-workspace
+  .workspace-main
+  .form-picker-panel
+  .form-picker-list
+  button
+  > svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+.form-picker-panel .form-picker-list p {
+  padding: 14px;
+  color: var(--muted);
+  font-size: 14px;
 }

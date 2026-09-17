@@ -22,7 +22,9 @@ test("signup formats national phone numbers and accepts the new password policy"
     .getByRole("button", { name: "Create account", exact: true })
     .first()
     .click();
-  await page.getByLabel("Country code", { exact: true }).selectOption("IN");
+  await page.getByRole("button", { name: "Country code", exact: true }).click();
+  await page.getByRole("combobox", { name: "Search country code" }).fill("+91");
+  await page.getByRole("option", { name: "India +91", exact: true }).click();
   await page.getByLabel("Phone number", { exact: true }).fill("098765 43210");
   await page.getByLabel("Full name").fill("Test Patient");
   await expect(page.getByLabel("Phone number", { exact: true })).toHaveValue(
@@ -31,8 +33,9 @@ test("signup formats national phone numbers and accepts the new password policy"
   await page.getByLabel("Date of birth").fill("1990-01-01");
   await page.getByLabel("Email", { exact: true }).fill("test@example.com");
   await page
-    .getByRole("combobox", { name: "Gender (optional)" })
-    .selectOption("Female");
+    .getByRole("button", { name: "Gender (optional)", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Female", exact: true }).click();
   await page.getByLabel("Password", { exact: true }).fill("Abcdef1!");
   let body: Record<string, string> = {};
   await page.route("**/api/auth", (r) => {
@@ -45,6 +48,7 @@ test("signup formats national phone numbers and accepts the new password policy"
     .click();
   await expect.poll(() => body.countryCode).toBe("IN");
   expect(body.phone).toBe("098765 43210");
+  expect(body.gender).toBe("Female");
   expect(errors).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
@@ -297,3 +301,58 @@ test("speech events stay responsive while a slow tool is pending", async ({
   ).toBeVisible();
   release();
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`account pickers support search and keyboard on mobile in ${theme} mode`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: theme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "My account", exact: true }).click();
+    await page
+      .getByRole("button", { name: "Create account", exact: true })
+      .first()
+      .click();
+    const country = page.getByRole("button", {
+      name: "Country code",
+      exact: true,
+    });
+    await country.click();
+    const search = page.getByRole("combobox", { name: "Search country code" });
+    await search.fill("United Kingdom");
+    await search.press("Enter");
+    await expect(country).toContainText("+44");
+    await expect(country).toBeFocused();
+    await country.click();
+    await search.fill("zzzzzz");
+    await expect(page.getByText("No matching options.")).toBeVisible();
+    await search.fill("+91");
+    await page.screenshot({ path: `artifacts/country-picker-${theme}.png` });
+    const popup = page.getByRole("dialog", { name: "Choose country code" });
+    const bounds = await popup.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+    await search.press("Escape");
+    await expect(country).toContainText("+44");
+    const gender = page.getByRole("button", {
+      name: "Gender (optional)",
+      exact: true,
+    });
+    await gender.click();
+    const genderSearch = page.getByRole("combobox", {
+      name: "Search gender (optional)",
+    });
+    await genderSearch.fill("Prefer not");
+    await genderSearch.press("Enter");
+    await expect(gender).toContainText("Prefer not to say");
+    await gender.click();
+    await page.screenshot({ path: `artifacts/gender-picker-${theme}.png` });
+    await genderSearch.press("Escape");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+}

@@ -8,11 +8,17 @@ import {
   type CountryCode,
 } from "@/lib/phone-library";
 import { normalizePhone } from "@/lib/phone-number";
+import { FormPicker } from "./form-picker";
 
 const names = new Intl.DisplayNames(["en"], { type: "region" });
 const countries = getCountries().sort((a, b) =>
   (names.of(a) || a).localeCompare(names.of(b) || b),
 );
+const countryOptions = countries.map((code) => ({
+  value: code,
+  label: names.of(code) || code,
+  detail: `+${getCountryCallingCode(code)}`,
+}));
 
 export function PhoneFields({ value = "" }: { value?: string }) {
   const saved = parsePhoneNumberFromString(value);
@@ -41,22 +47,16 @@ export function PhoneFields({ value = "" }: { value?: string }) {
     <div className="phone-fields">
       <label>
         Country code
-        <select
-          aria-label="Country code"
+        <FormPicker
+          label="Country code"
           name="countryCode"
           value={country}
-          onChange={(e) => {
-            setCountry(e.target.value as CountryCode);
+          onChange={(value) => {
+            setCountry(value as CountryCode);
             setError("");
           }}
-          autoComplete="tel-country-code"
-        >
-          {countries.map((code) => (
-            <option key={code} value={code}>
-              {names.of(code)} (+{getCountryCallingCode(code)})
-            </option>
-          ))}
-        </select>
+          options={countryOptions}
+        />
       </label>
       <label>
         Phone number
