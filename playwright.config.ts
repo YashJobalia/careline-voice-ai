@@ -8,6 +8,11 @@ try {
 } catch {}
 export default defineConfig({
   testDir: "./e2e",
+  // The original receptionist UI is retained only as historical coverage.
+  testMatch:
+    process.env.RUN_LEGACY_UI_TESTS === "1"
+      ? "**/*.spec.ts"
+      : ["**/workspace*.spec.ts", "**/rls-live.spec.ts"],
   timeout: 60000,
   workers: 1,
   use: {

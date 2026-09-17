@@ -1,0 +1,510 @@
+import { z } from "zod";
+import { randomBytes } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
+import { db, HttpError, session, sign, verify, type Session } from "./server";
+import { supabaseServer } from "./supabase";
+import { availableSlots } from "./scheduling";
+import { doctors, formatSlot } from "./clinic";
+import {
+  mutation,
+  navigation,
+  signInRequest,
+  accountLookup,
+  type Mutation,
+  type ActionResult,
+  type Visit,
+} from "./workspace";
+import { patientDetails } from "./patient";
+import { miraCapabilities } from "./mira-capabilities";
+
+function describeVisit(visit: Visit) {
+  return {
+    ...visit,
+    doctorName: doctors.find((doctor) => doctor.id === visit.slot.doctor_id)
+      ?.name,
+    timeLabel: formatSlot(visit.slot),
+    timeZone: "America/Chicago",
+    timing:
+      new Date(visit.slot.starts_at).getTime() <= Date.now()
+        ? "past"
+        : "upcoming",
+  };
+}
+
+export async function visits(user: Session, clinic = false): Promise<Visit[]> {
+  if (user.guest) throw new HttpError(401, "Sign in to see appointments.");
+  if (clinic && user.role !== "doctor")
+    throw new HttpError(403, "Doctor access required.");
+  const rows: Visit[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const batch = await db<
+      (Omit<Visit, "slot"> & { careline_slots: Visit["slot"] })[]
+    >(
+      `careline_appointments?select=*,careline_slots(id,doctor_id,starts_at)${clinic ? "" : `&session_id=eq.${user.id}`}&order=created_at.desc,id&limit=500&offset=${offset}`,
+    );
+    rows.push(
+      ...batch.map(({ careline_slots, ...r }) => ({
+        ...r,
+        slot: careline_slots,
+      })),
+    );
+    if (batch.length < 500) return rows;
+  }
+}
+export async function history(user: Session) {
+  const rows = await db<
+    { messages: { role: "user" | "assistant"; content: string }[] }[]
+  >(`careline_conversations?select=messages&user_id=eq.${user.id}`);
+  return rows[0]?.messages || [];
+}
+export async function saveHistory(
+  user: Session,
+  messages: { role: "user" | "assistant"; content: string }[],
+) {
+  await db("careline_conversations?on_conflict=user_id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({
+      user_id: user.id,
+      messages: messages.slice(-200),
+      updated_at: new Date().toISOString(),
+    }),
+  });
+}
+async function accessibleVisit(user: Session, id: string, clinic = false) {
+  const visit = (await visits(user, clinic)).find((v) => v.id === id);
+  if (!visit)
+    throw new HttpError(404, "Appointment not found or not accessible.");
+  if (
+    visit.status !== "confirmed" ||
+    new Date(visit.slot.starts_at).getTime() <= Date.now()
+  )
+    throw new HttpError(
+      409,
+      "Only upcoming confirmed appointments can be changed.",
+    );
+  return visit;
+}
+async function validate(user: Session, p: Mutation) {
+  if (p.action === "register") {
+    if (!user.guest) throw new HttpError(409, "You already have an account.");
+    return;
+  }
+  if (p.action === "signout" || p.action === "clear_history") return;
+  if (user.guest)
+    throw new HttpError(401, "Create an account or sign in first.");
+  if (p.action === "request_reschedule" && user.role !== "doctor")
+    throw new HttpError(403, "Only doctors can request a patient reschedule.");
+  if (p.action === "book" || p.action === "reschedule") {
+    const slot = (await availableSlots()).find((s) => s.id === p.slotId);
+    if (!slot) throw new HttpError(409, "That slot is no longer available.");
+    if (slot.doctor_id === user.doctorId)
+      throw new HttpError(
+        400,
+        "You cannot book yourself. Choose another doctor.",
+      );
+    if (p.action === "reschedule") await accessibleVisit(user, p.id);
+  }
+  if (p.action === "cancel" || p.action === "request_reschedule")
+    await accessibleVisit(user, p.id, user.role === "doctor");
+}
+export async function registerAccount(
+  details: z.infer<typeof patientDetails>,
+  password?: string,
+) {
+  const client = await supabaseServer();
+  // Optional local adapter, so development does not require an Edge deployment.
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const visitor = await session();
+    if (!visitor.guest)
+      throw new HttpError(409, "You already have an account.");
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
+    const generated =
+      password || randomBytes(20).toString("base64url") + "aA1!";
+    const patientId = "CL" + visitor.id.replaceAll("-", "").toUpperCase();
+    const { error: insertError } = await admin
+      .from("careline_patients")
+      .insert({
+        user_id: visitor.id,
+        patient_id: patientId,
+        full_name: details.name,
+        date_of_birth: details.dateOfBirth,
+        gender: details.gender || null,
+        email: details.email,
+        phone: details.phone,
+        consented_at: new Date().toISOString(),
+      });
+    if (insertError)
+      throw new HttpError(
+        409,
+        "Registration is already in progress. Try again or sign in.",
+      );
+    const { error: updateError } = await admin.auth.admin.updateUserById(
+      visitor.id,
+      {
+        email: details.email,
+        password: generated,
+        email_confirm: true,
+        user_metadata: { display_name: details.name, patient_id: patientId },
+      },
+    );
+    if (updateError) {
+      await admin.from("careline_patients").delete().eq("user_id", visitor.id);
+      throw new HttpError(
+        409,
+        "Could not register this email. Sign in if you already have an account.",
+      );
+    }
+    const { error } = await client.auth.signInWithPassword({
+      email: details.email,
+      password: generated,
+    });
+    return {
+      ok: true,
+      message: error
+        ? "Account created. Sign in with your credentials."
+        : "Account created. You are signed in.",
+      credentials: password
+        ? undefined
+        : { email: details.email, password: generated },
+    };
+  }
+  const { data } = await client.auth.getSession();
+  const r = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/register-patient`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${data.session?.access_token}`,
+        apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ...details, password, confirmed: true }),
+      signal: AbortSignal.timeout(20000),
+    },
+  );
+  const result = await r.json();
+  if (!r.ok)
+    throw new HttpError(
+      r.status,
+      result.error || "Could not create the account.",
+    );
+  const { error } = await client.auth.signInWithPassword({
+    email: result.email,
+    password: result.password,
+  });
+  return {
+    ok: true,
+    message: error
+      ? "Account created. Use your credentials to sign in."
+      : "Account created. You are signed in and can continue.",
+    credentials: password
+      ? undefined
+      : { email: result.email, password: result.password },
+  };
+}
+export async function workspaceAction(raw: unknown): Promise<ActionResult> {
+  const user = await session();
+  const envelope = z
+    .object({
+      action: z.string(),
+      args: z.unknown().optional(),
+      token: z.string().max(10000).optional(),
+    })
+    .parse(raw);
+  const args = envelope.args || {};
+  if (envelope.action === "get_capabilities")
+    return { capabilities: miraCapabilities(user) };
+  if (envelope.action === "lookup_account") {
+    const p = accountLookup.parse(args);
+    const result = await db<{ status: "found" | "not_found" | "rate_limited" }>(
+      "rpc/careline_lookup_account",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          contact: p.email || p.phone,
+          contact_type: p.email ? "email" : "phone",
+        }),
+      },
+    );
+    if (result.status === "rate_limited")
+      return {
+        accountLookup: result,
+        message:
+          "Account lookup limit reached. Offer the private sign-in form; do not retry lookup or infer whether an account exists.",
+      };
+    if (result.status === "found")
+      return {
+        accountLookup: result,
+        ...(user.guest
+          ? {
+              authentication: {
+                email: p.email,
+                originalRequest: p.originalRequest,
+              },
+              navigation: {
+                page: "account" as const,
+                accountSection: "signin" as const,
+              },
+            }
+          : {}),
+        message: user.guest
+          ? "An account matches that contact. The private sign-in form is open. Ask the user to enter their password privately; for a phone match they must also enter their login email. No profile or appointment data was disclosed and they are not yet signed in."
+          : "An account matches that contact. This does not grant access to it. Use permission-scoped appointment search for authorized records.",
+      };
+    return {
+      accountLookup: result,
+      message:
+        "No account matched that exact contact. Confirm spelling or country code. Only offer registration if the user confirms they are new and wants to create an account. Do not automatically create an account.",
+    };
+  }
+  const requireAccount = (
+    returnTo?: z.infer<typeof navigation>,
+  ): ActionResult => ({
+    authentication: { returnTo },
+    message:
+      "An account is needed. Ask whether the user already has one. Offer private sign-in with start_signin or guide a new user through registration. No private records have been read and no change has been made.",
+  });
+  if (envelope.action === "start_signin") {
+    const p = signInRequest.parse(args);
+    if (!user.guest)
+      return { account: user, message: "You are already signed in." };
+    return {
+      ...requireAccount(p.returnTo),
+      authentication: {
+        email: p.email,
+        returnTo: p.returnTo,
+        originalRequest: p.originalRequest,
+      },
+      navigation: { page: "account", accountSection: p.mode },
+      message:
+        "Private account form opened. The email, if supplied, is prefilled. Account existence has not been checked. Ask the user to enter credentials privately, or offer guided registration if they are new.",
+    };
+  }
+  if (envelope.action === "end_call" || envelope.action === "mute")
+    return { callControl: envelope.action };
+  if (envelope.action === "navigate") {
+    const target = navigation.parse(args);
+    if (user.guest && ["appointments", "doctor"].includes(target.page))
+      return requireAccount(target);
+    if (target.page === "doctor" && user.role !== "doctor")
+      throw new HttpError(403, "Doctor access required.");
+    return {
+      navigation: target,
+      ...(user.guest && ["appointments", "account"].includes(target.page)
+        ? {
+            message:
+              "The page is open. Sign in or create an account to view private data.",
+          }
+        : {}),
+    };
+  }
+  if (envelope.action === "get_account") return { account: user };
+  if (envelope.action === "search_appointments") {
+    if (user.guest) return requireAccount({ page: "appointments" });
+    const p = z
+      .object({
+        query: z.string().trim().min(2).max(254),
+        scope: z.enum(["mine", "clinic"]).default("mine"),
+      })
+      .parse(args);
+    if (p.scope === "clinic" && user.role !== "doctor")
+      throw new HttpError(403, "Doctor access required.");
+    const matched = await db<{ appointment_id: string }[]>(
+      "rpc/careline_search_visits",
+      {
+        method: "POST",
+        body: JSON.stringify({ search_text: p.query, search_scope: p.scope }),
+      },
+    );
+    const ids = new Set(matched.slice(0, 100).map((row) => row.appointment_id));
+    const results = (await visits(user, p.scope === "clinic")).filter((visit) =>
+      ids.has(visit.id),
+    );
+    return {
+      searchResults: results.map(describeVisit),
+      scope: p.scope,
+      query: p.query,
+      truncated: matched.length > 100,
+      message: results.length
+        ? "Matched only records within your permissions. Clarify which appointment before changing anything."
+        : "No matching appointments in your permitted scope. This does not establish whether an account exists.",
+    };
+  }
+  if (envelope.action === "list_appointments") {
+    if (user.guest) return requireAccount({ page: "appointments" });
+    const p = z
+      .object({ scope: z.enum(["mine", "clinic"]).default("mine") })
+      .parse(args);
+    return {
+      appointments: (await visits(user, p.scope === "clinic")).map(
+        describeVisit,
+      ),
+      scope: p.scope,
+    };
+  }
+  if (envelope.action === "list_specialists") return { specialists: doctors };
+  if (envelope.action === "availability") {
+    const p = z
+      .object({ doctorId: z.string().optional(), date: z.string().optional() })
+      .parse(args);
+    return {
+      slots: (await availableSlots(undefined, p.doctorId))
+        .filter(
+          (s) =>
+            s.doctor_id !== user.doctorId &&
+            (!p.date ||
+              new Intl.DateTimeFormat("en-CA", {
+                timeZone: "America/Chicago",
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+              }).format(new Date(s.starts_at)) === p.date),
+        )
+        .slice(0, 30)
+        .map((s) => ({
+          ...s,
+          label: formatSlot(s),
+          doctor: doctors.find((d) => d.id === s.doctor_id)?.name,
+        })),
+    };
+  }
+  if (envelope.action === "prepare") {
+    const details = mutation.parse(args);
+    if (
+      user.guest &&
+      !["register", "signout", "clear_history"].includes(details.action)
+    )
+      return requireAccount({
+        page: details.action === "book" ? "appointments" : "account",
+        ...(details.action === "book" ? { booking: true } : {}),
+      });
+    await validate(user, details);
+    let summary = details.action.replaceAll("_", " ");
+    if (details.action === "book" || details.action === "reschedule") {
+      const slot = (await availableSlots()).find(
+        (s) => s.id === details.slotId,
+      )!;
+      summary = `${details.action === "book" ? "Book" : "Move appointment to"} ${doctors.find((d) => d.id === slot.doctor_id)?.name}, ${formatSlot(slot)}`;
+    }
+    return {
+      pending: {
+        details,
+        summary,
+        token: sign({
+          kind: "workspace",
+          userId: user.id,
+          details,
+          exp: Date.now() + 600000,
+        }),
+      },
+      message: "Prepared for review. Ask for confirmation before committing.",
+    };
+  }
+  if (envelope.action !== "confirm" || !envelope.token)
+    throw new HttpError(400, "Unknown action.");
+  const signed = verify<{
+    kind: string;
+    userId: string;
+    details: Mutation;
+    exp: number;
+  }>(envelope.token);
+  if (signed.kind !== "workspace" || signed.userId !== user.id)
+    throw new HttpError(403, "This action belongs to another account.");
+  const p = mutation.parse(signed.details);
+  await validate(user, p);
+  if (p.action === "register") return registerAccount(p);
+  if (p.action === "book") {
+    const rows = await db<{ appointment_code: string }[]>(
+      "careline_appointments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          slot_id: p.slotId,
+          session_id: user.id,
+          patient_name: user.name,
+          notes: JSON.stringify(p.notes),
+        }),
+      },
+    );
+    return {
+      ok: true,
+      message: `Appointment confirmed. Reference ${rows[0].appointment_code}.`,
+    };
+  }
+  if (p.action === "reschedule") {
+    const old = await accessibleVisit(user, p.id);
+    await db("rpc/careline_reschedule_booking", {
+      method: "POST",
+      body: JSON.stringify({
+        booking_id: p.id,
+        old_slot_id: old.slot_id,
+        new_slot_id: p.slotId,
+      }),
+    });
+  } else if (p.action === "cancel" || p.action === "request_reschedule") {
+    const changed = await db<boolean>("rpc/careline_manage_visit", {
+      method: "POST",
+      body: JSON.stringify({
+        booking_id: p.id,
+        operation: p.action,
+        reason: p.reason,
+      }),
+    });
+    if (!changed)
+      throw new HttpError(
+        409,
+        "The appointment changed. Refresh and try again.",
+      );
+  } else if (p.action === "update_profile") {
+    await db(`careline_patients?user_id=eq.${user.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        full_name: p.name,
+        date_of_birth: p.dateOfBirth,
+        ...(p.gender !== undefined ? { gender: p.gender || null } : {}),
+        phone: p.phone,
+      }),
+    });
+  } else if (p.action === "change_password") {
+    const password = randomBytes(18).toString("base64url") + "aA1!";
+    const { error } = await (
+      await supabaseServer()
+    ).auth.updateUser({ password });
+    if (error)
+      throw new HttpError(
+        400,
+        "Could not change password. Use the account form.",
+      );
+    return {
+      ok: true,
+      message:
+        "Password changed. Save the new password shown privately on screen.",
+      credentials: { email: user.email!, password },
+    };
+  } else if (p.action === "clear_history") {
+    await db(`careline_conversations?user_id=eq.${user.id}`, {
+      method: "DELETE",
+    });
+    return {
+      ok: true,
+      clearedHistory: true,
+      message: "Saved conversation cleared.",
+    };
+  } else if (p.action === "signout") {
+    const { error } = await (await supabaseServer()).auth.signOut();
+    if (error) throw new HttpError(503, "Sign out failed. Please retry.");
+    return { ok: true, signedOut: true, message: "Signed out." };
+  }
+  return {
+    ok: true,
+    message:
+      p.action === "request_reschedule"
+        ? "Reschedule request saved. The patient will see it in their appointments. Their slot remains reserved."
+        : "Changes saved.",
+  };
+}

@@ -1,4 +1,4 @@
-# Verification — September 16, 2026
+# Verification - September 16, 2026
 
 Production: https://careline-sandy.vercel.app
 

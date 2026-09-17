@@ -1,9 +1,22 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "CareLine | A little less waiting. A little more care.",
+  title: "CareLine AI | Conversational Voice Agent",
   description:
-    "A conversational clinic receptionist demo. Find your specialist, talk through your preferences, and book an appointment.",
+    "An interactive voice and conversational AI project by Yash Jobalia. Try natural conversation, scheduling tools, multilingual speech, and live diagnostics.",
+  applicationName: "CareLine AI",
+  appleWebApp: {
+    capable: true,
+    title: "CareLine AI",
+    statusBarStyle: "default",
+  },
+  icons: { apple: "/icons/apple-touch-icon.png" },
+};
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#183c30",
 };
 export default function RootLayout({
   children,

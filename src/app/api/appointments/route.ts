@@ -79,7 +79,13 @@ export async function POST(req: Request) {
       patientName: string;
       sessionId: string;
       exp: number;
+      kind?: string;
     }>(token);
+    if (p.kind && p.kind !== "booking")
+      throw new HttpError(
+        400,
+        "Use rescheduling confirmation for this proposal.",
+      );
     if (p.sessionId !== visitor.id)
       throw new HttpError(403, "This booking belongs to another session.");
     const result = await db<{ id: string; appointment_code: string }[]>(
@@ -99,5 +105,45 @@ export async function POST(req: Request) {
     );
   } catch (e) {
     return failure(e);
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    sameOrigin(req);
+    const visitor = await session();
+    if (visitor.guest) throw new HttpError(403, "Sign in to reschedule.");
+    const { token } = z
+      .object({ token: z.string().max(2000) })
+      .parse(await req.json());
+    const p = verify<{
+      kind: string;
+      sessionId: string;
+      replacesId: string;
+      oldSlotId: string;
+      slotId: string;
+      exp: number;
+    }>(token);
+    if (p.kind !== "reschedule" || p.sessionId !== visitor.id)
+      throw new HttpError(403, "Invalid rescheduling confirmation.");
+    const rows = await db<{ id: string; appointment_code: string }[]>(
+      "rpc/careline_reschedule_booking",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          booking_id: p.replacesId,
+          old_slot_id: p.oldSlotId,
+          new_slot_id: p.slotId,
+        }),
+      },
+    );
+    if (!rows[0])
+      throw new HttpError(
+        409,
+        "Could not move this appointment. Your original appointment is unchanged.",
+      );
+    return Response.json({ id: rows[0].id, code: rows[0].appointment_code });
+  } catch (error) {
+    return failure(error);
   }
 }

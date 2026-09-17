@@ -2,6 +2,15 @@ import { z } from "zod";
 
 export const patientDetails = z.object({
   name: z.string().trim().min(2).max(60),
+  gender: z.string().trim().max(60).nullable().optional(),
+  email: z.email().trim().toLowerCase().max(254),
+  phone: z
+    .string()
+    .trim()
+    .regex(
+      /^\+[1-9]\d{7,14}$/,
+      "Use a country code, for example +13125550101.",
+    ),
   dateOfBirth: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)

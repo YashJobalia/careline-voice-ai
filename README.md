@@ -1,101 +1,54 @@
 # CareLine Voice AI
 
-A Next.js portfolio demo for a fictional multispecialty clinic. Browser voice and text guide visitors from department selection to a confirmed appointment.
+A voice-first portfolio project by Yash Jobalia. A fictional clinic is the setting for demonstrating direct speech-to-speech conversation, tool calling, persistent context, and server-enforced permissions.
 
-**Live demo:** https://careline-sandy.vercel.app
+The local app opens on the voice demo. Patients and doctors share one account pool. Both can use the UI or ask the assistant to navigate and carry out permitted actions.
 
-## Features
+## What it demonstrates
 
-- Open guest conversation with Supabase anonymous sessions; no account or access code required to talk.
-- AI prepares patient registration from a fictional name and date of birth; an explicit Confirm account button creates the patient account.
-- Patient-ID/password login plus existing email accounts, sign-out, and display-name editing.
-- Unique appointment references such as AB123, displayed and spoken after confirmation.
-- Cardiology, Otorhinolaryngology (ENT), and Dermatology; two fictional physicians per department.
-- A single conversational receptionist powered by OpenAI tool calling.
-- Hands-free microphone with local speech/pause detection, automatic turn submission, OpenAI Coral voice playback, live transcript, and typed fallback.
-- Database-backed availability, explicit confirmation, persistent appointments, and cancellation.
-- Row-level security isolates appointments by account. A partial unique index prevents double booking.
-- No app-imposed daily request quota or conversation-turn cutoff. Recent messages are sent as a rolling context window. Provider billing, rate limits, and technical request-size limits still apply.
+- OpenAI Realtime over WebRTC, automatic input-language detection, selectable reply language (English by default), semantic turn detection, and interruption support.
+- Installable PWA with mobile bottom navigation, app icons, and an offline reconnect page. Voice and account actions require connectivity. See [PWA setup and testing](docs/pwa.md).
+- Text conversations through the Responses API with the same server action layer.
+- Reviewable, signed action drafts, followed by explicit spoken, typed, or button confirmation.
+- Required name, date of birth, email, and international phone on registration. Manual signup requires a password; AI registration generates a unique temporary password and keeps the session signed in.
+- Shared patient/doctor identities with protected doctor assignments. Doctors can manage clinic appointments and book with another doctor as a patient.
+- Appointment list and monthly calendar, past visits, cancellation reasons, doctor reschedule requests, and atomic patient rescheduling.
+- Conversational intake notes: concern, duration, severity, and optional context. The doctor sees these notes with the appointment.
+- Account-specific transcript history in Supabase, restored on return or refresh, with a clear-history control.
+- Profile editing, sign-out, manual password changes, and confirmed AI-generated password changes.
+- A collapsible explanation and live tool activity below the voice assistant.
 
 ## Run locally
 
-Requires Node.js 22 or newer.
+Requires Node.js 22+ and a configured Supabase project.
 
 ```sh
 npm ci
-cp .env.example .env.local
-# Fill in your environment variables, then:
+# Create .env.local from .env.example only if you do not already have one.
 npm run dev
 ```
 
-Open http://localhost:3000. Do not overwrite an existing `.env.local` with configured secrets.
+Open http://localhost:3000. Secrets belong in server environment variables. Never put an OpenAI or Supabase service-role key in a NEXT_PUBLIC variable.
 
-## Environment
+Required: OPENAI_API_KEY, OPENAI_MODEL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, SESSION_SECRET.
+Optional: OPENAI_REALTIME_MODEL (defaults to gpt-realtime), SUPABASE_SERVICE_ROLE_KEY (local registration adapter). Without the server key, registration uses the register-patient Supabase Edge Function.
 
-| Variable                               | Purpose                                                |
-| -------------------------------------- | ------------------------------------------------------ |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase project URL                                   |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Public Supabase key; data access is controlled by RLS  |
-| `SESSION_SECRET`                       | Random 32-byte secret for signed booking confirmations |
-| `OPENAI_API_KEY`                       | Server-side key with available API credit              |
-| `OPENAI_MODEL`                         | Defaults to `gpt-4o-mini`                              |
-
-No Supabase service-role key belongs in Next.js. Scheduling calls use the visitor's JWT. The register-patient Supabase Edge Function validates that JWT and uses its built-in service-role credential only to register the consenting guest. Never expose the OpenAI key or session secret through `NEXT_PUBLIC_` variables.
-
-## Supabase
-
-Hosted project: https://supabase.com/dashboard/project/ofdidlumvcgynpdatpre
-
-The initial, account, and private-function migrations are already applied. For a fresh project, run `supabase/setup.sql`, `supabase/user-accounts.sql`, then `supabase/private-functions.sql` and the SQL files in `supabase/migrations/` in order. Enable anonymous sign-ins and deploy `supabase/functions/register-patient/index.ts` as `register-patient`. The function validates bearer tokens with getUser; gateway JWT verification is disabled to support the project signing-key configuration. Initial seeding provides two weeks of weekday slots in America/Chicago. To add future slots, run only the slot-insertion section of `setup.sql`; do not rerun the full old bootstrap on an upgraded schema.
-
-Email confirmation remains enabled. In Supabase Authentication → URL Configuration, set the Site URL to your deployed app URL and add its `/auth/callback` URL to the redirect allowlist. Confirm your email, then return to CareLine and sign in. Signup email delivery depends on Supabase's email rate limits and SMTP configuration.
-
-Public users can read clinic data and sanitized slot availability, but cannot read appointment details. The cancellation function explicitly verifies `auth.uid()`. Historical quota tables/functions are retained by the migrations but no longer called by the app. The availability function returns no patient data. Their elevated permissions are intentional and restricted to these operations.
-
-## Demo walkthrough
-
-1. Click Start conversation; no login or access code is required.
-2. Provide a fictional name and date of birth when asked. Review and click Confirm account. Declining does not create a patient profile.
-3. Save the generated patient ID. For this fictional demo the password is Careline@123, as requested; this is not suitable for real patient data or a production clinic.
-4. Describe the reason for the visit. Confirm the suggested specialty and choose a physician and an actual available time.
-5. Click Confirm appointment. The assistant provides the server-generated code (two uppercase letters and three digits).
-6. Sign back in with the patient ID/password to see the saved code or cancel the appointment.
-
-Temporary anonymous auth sessions exist before registration, but contain no patient profile. Name/date-of-birth are not login credentials. Appointment codes are references, not authentication tokens. Codes are unique and never reused; this format supports 676,000 lifetime references, after which booking fails rather than reusing a code.
-
-Voice input uses browser MediaRecorder and OpenAI transcription; responses use OpenAI gpt-4o-mini-tts with the Coral voice and warm conversational delivery. After one microphone permission prompt, local voice activity detection submits speech after a roughly 0.85-second pause and keeps listening during replies so callers can interrupt. Silence is not sent for transcription. Browser echo cancellation is enabled. Detected speech cancels current playback and pending speech generation while preserving the new recording. Listening pauses while a submitted turn is being processed. Mute or end the call to stop microphone capture. MP3 playback streams as bytes arrive in browsers supporting MediaSource audio/mpeg; other browsers use buffered playback. This remains a transcription/chat/TTS pipeline rather than a realtime speech-to-speech model, so network and model latency remain. Text input is available throughout. Transcripts remain in memory; audio is not stored in the database. A funded OpenAI API account is required; the app does not silently fall back to scripted replies.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  User[Browser: voice or text] --> API[Next.js route handlers]
-  API --> STT[OpenAI transcription]
-  API --> AI[OpenAI Responses + tools]
-  AI --> Tools[Availability and appointment proposals]
-  Tools --> DB[Supabase PostgreSQL + RLS]
-  User --> Confirm[Explicit booking confirmation]
-  Confirm --> DB
-  Auth[Supabase Auth] --> API
-```
-
-This is a scheduling demo, not a clinical system. It does not diagnose, triage, process real patient information, or connect to an actual clinic. Unclear symptom requests are referred to staff; potential emergencies direct the caller to local emergency services.
+See [workspace setup and demo accounts](docs/workspace.md) for schema, architecture, limitations, and credentials. The database schema and demo fixtures have been applied to the configured hosted project. Website changes are local and have not been deployed to Vercel.
 
 ## Verification
 
 ```sh
-npm run typecheck
 npm test
+npm run typecheck
 npm run build
-npx playwright test
+npm run test:workspace
+# Explicit opt-in: uses and changes the hosted fictional demo accounts.
+# Set RUN_LIVE_WORKSPACE=1, then:
+npm run test:workspace:live
+# Optional paid synthetic microphone-to-calendar check:
+npm run eval:realtime -- --live
 ```
 
-Browser tests use installed Chrome and a running app. Account tests require `.env.test.local` containing dedicated `TEST_EMAIL`, `TEST_EMAIL_TWO`, and `TEST_PASSWORD`. Set RUN_LIVE_AI_TESTS=1 to opt into real-model tests. Live tests require a funded OpenAI key and consume small amounts of API credit. `scripts/test-fixtures.cjs` generates isolated test fixtures for this development database; never seed them into unrelated databases.
+The workspace tests replace the original receptionist UI journey. Older UI specifications remain as historical coverage of the previous interface and are excluded from the current default browser suite. The legacy text/audio/phone engine remains available for comparison; its deterministic tests still run with npm test.
 
-## Deployment
-
-The project is deployed on Vercel as `careline` in `yash-jobalias-projects`. Production and preview environment variables have been configured. Run `npx vercel --prod` after changes. No paid Vercel plan is required for this personal demo within Hobby limits. The OpenAI balance is separate.
-
-### Scheduling boundaries
-
-The receptionist suggests specialties for scheduling, not diagnoses or treatment. Ambiguous cases go to clinic staff; possible emergency symptoms interrupt routine scheduling. Emergency wording is informed by [NHS shortness-of-breath guidance](https://www.nhs.uk/symptoms/shortness-of-breath/).
+See [verification record](docs/workspace-verification.md). The optional [Twilio phone adapter](docs/phone-demo.md) is separate from browser Realtime and still needs a number and persistent WebSocket host.

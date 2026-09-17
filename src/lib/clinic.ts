@@ -76,7 +76,12 @@ export type Appointment = {
   slot: Slot;
   status: "confirmed" | "cancelled";
 };
-export type Proposal = { slot: Slot; patientName: string; token?: string };
+export type Proposal = {
+  slot: Slot;
+  patientName: string;
+  token?: string;
+  replaces?: { id: string; slot: Slot };
+};
 export type Message = { role: "user" | "assistant"; content: string };
 export const clinicTimezone = "America/Chicago";
 export function formatSlot(slot: Slot) {
@@ -115,4 +120,4 @@ export function practiceSlots(now = new Date()): Slot[] {
   return slots;
 }
 export const greeting =
-  "Hi, welcome to CareLine. I'm your AI receptionist. How can I help you today?";
+  "Hi, welcome to CareLine AI. I'm your AI receptionist. How can I help you today?";

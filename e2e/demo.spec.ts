@@ -47,7 +47,7 @@ test("account login, profile, persistent booking, isolation and cancellation", a
   await page.getByLabel("Display name").fill("CareLine Tester");
   await page.getByRole("button", { name: "Save profile" }).click();
   await expect(page.getByRole("status")).toContainText("Profile updated");
-  await page.getByRole("button", { name: "Reception", exact: true }).click();
+  await page.getByRole("button", { name: "Voice demo", exact: true }).click();
   const clinic = await (await page.request.get("/api/clinic")).json();
   const prepared = await (
     await page.request.put("/api/appointments", {

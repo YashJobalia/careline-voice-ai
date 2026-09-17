@@ -5,6 +5,7 @@ import {
   sameOrigin,
   authorizeAI as session,
 } from "@/lib/server";
+import { languageSchema } from "@/lib/conversation";
 export const maxDuration = 30;
 export async function POST(req: Request) {
   try {
@@ -33,14 +34,19 @@ export async function POST(req: Request) {
     const form = new FormData();
     form.set("file", file);
     form.set("model", "gpt-4o-mini-transcribe");
-    form.set("language", "en");
+    const language = languageSchema.parse(data.get("language") || "auto");
+    if (language !== "auto") form.set("language", language);
+    form.set(
+      "prompt",
+      "CareLine, Maya Shah, Oliver Chen, Amelia Reed, Arjun Patel, Sophia Morgan, Ethan Brooks. Cardiology, dermatology, ENT.",
+    );
     const response = await fetch(
       "https://api.openai.com/v1/audio/transcriptions",
       {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         body: form,
-        signal: AbortSignal.timeout(25000),
+        signal: AbortSignal.any([req.signal, AbortSignal.timeout(25000)]),
       },
     );
     if (!response.ok)
@@ -51,6 +57,7 @@ export async function POST(req: Request) {
     const result = await response.json();
     return Response.json({ text: result.text });
   } catch (e) {
+    if (req.signal.aborted) return new Response(null, { status: 499 });
     return failure(e);
   }
 }

@@ -11,13 +11,22 @@ test("registration rejects future or impossible dates and accepts a leap birthda
     "02/03/1990",
   ]) {
     assert.equal(
-      patientDetails.safeParse({ name: "Alex Demo", dateOfBirth }).success,
+      patientDetails.safeParse({
+        name: "Alex Demo",
+        email: "alex@example.com",
+        phone: "+13125550101",
+        dateOfBirth,
+      }).success,
       false,
     );
   }
   assert.equal(
-    patientDetails.safeParse({ name: "Alex Demo", dateOfBirth: "2000-02-29" })
-      .success,
+    patientDetails.safeParse({
+      name: "Alex Demo",
+      email: "alex@example.com",
+      phone: "+13125550101",
+      dateOfBirth: "2000-02-29",
+    }).success,
     true,
   );
 });

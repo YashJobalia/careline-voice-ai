@@ -54,6 +54,13 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
   await page.addInitScript(() => {
     const originalPause = HTMLMediaElement.prototype.pause;
     (window as unknown as { interruptions: number }).interruptions = 0;
+    const originalPlay = HTMLMediaElement.prototype.play;
+    (window as unknown as { resumes: number }).resumes = 0;
+    HTMLMediaElement.prototype.play = function () {
+      if (this.currentTime > 0 && !this.ended)
+        (window as unknown as { resumes: number }).resumes++;
+      return originalPlay.call(this);
+    };
     HTMLMediaElement.prototype.pause = function () {
       if (!this.paused && !this.ended && this.currentTime > 0) {
         (window as unknown as { interruptions: number }).interruptions++;
@@ -96,7 +103,12 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
   await page.route("**/api/transcribe", async (route) => {
     expect(route.request().postDataBuffer()?.length).toBeGreaterThan(1000);
     transcriptions++;
-    await route.fulfill({ json: { text: `Spoken turn ${transcriptions}` } });
+    // First interruption is a backchannel: resume playback without a model turn.
+    await route.fulfill({
+      json: {
+        text: transcriptions === 1 ? "mm-hmm" : `Spoken turn ${transcriptions}`,
+      },
+    });
   });
   await page.route("**/api/chat", async (route) => {
     turns++;
@@ -123,6 +135,11 @@ test("hands-free microphone submits successive turns and stops on mute/end", asy
     expect(
       await page.evaluate(
         () => (window as unknown as { interruptions: number }).interruptions,
+      ),
+    ).toBeGreaterThan(0);
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { resumes: number }).resumes,
       ),
     ).toBeGreaterThan(0);
     await page.getByRole("button", { name: "Mute microphone" }).click();

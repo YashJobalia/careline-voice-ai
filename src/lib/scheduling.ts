@@ -15,19 +15,35 @@ export async function proposal(
   slotId: string,
   patientName: string,
   visitor: Session,
+  replacesId?: string,
 ) {
   if (visitor.guest)
     throw new HttpError(403, "Confirm your patient registration first.");
   const slots = await availableSlots();
   const slot = slots.find((s) => s.id === slotId);
   if (!slot) throw new HttpError(409, "This slot is no longer available.");
+  const replaces = replacesId
+    ? (await appointments(visitor.id)).find(
+        (a) =>
+          a.id === replacesId &&
+          a.status === "confirmed" &&
+          new Date(a.slot.starts_at).getTime() > Date.now(),
+      )
+    : undefined;
+  if (replacesId && !replaces)
+    throw new HttpError(409, "The original appointment cannot be rescheduled.");
   return {
     slot,
     patientName,
+    ...(replaces ? { replaces: { id: replaces.id, slot: replaces.slot } } : {}),
     token: sign({
+      kind: replaces ? "reschedule" : "booking",
       slotId,
       patientName,
       sessionId: visitor.id,
+      ...(replaces
+        ? { replacesId: replaces.id, oldSlotId: replaces.slot_id }
+        : {}),
       exp: Date.now() + 10 * 60 * 1000,
     }),
   };

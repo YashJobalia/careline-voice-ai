@@ -1,5 +1,15 @@
 "use client";
 import { useHandsFreeVoice } from "./use-hands-free-voice";
+import { ConversationLab } from "./conversation-lab";
+import { isBackchannel } from "@/lib/voice-activity";
+import {
+  type ChatResult,
+  type Language,
+  type Preferences,
+  type TurnMetric,
+  type Handoff,
+  type Source,
+} from "@/lib/conversation";
 import { speechSource } from "@/lib/stream-speech";
 import type { Registration } from "@/lib/patient";
 
@@ -11,7 +21,6 @@ import {
   type FormEvent,
 } from "react";
 import {
-  Activity,
   ArrowDownLeft,
   ArrowRight,
   CalendarDays,
@@ -20,7 +29,6 @@ import {
   ChevronRight,
   Clock3,
   Headphones,
-  Heart,
   LayoutDashboard,
   LogOut,
   Mic,
@@ -58,9 +66,11 @@ async function api<T>(
   path: string,
   method = "GET",
   body?: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(path, {
     method,
+    signal,
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
@@ -71,6 +81,23 @@ async function api<T>(
 }
 
 export function CarelineApp() {
+  const [language, setLanguage] = useState<Language>("auto");
+  const [pauseMs, setPauseMs] = useState(1000);
+  const [turns, setTurns] = useState<TurnMetric[]>([]);
+  const [preferences, setPreferences] = useState<Preferences>();
+  const [handoff, setHandoff] = useState<Handoff>();
+  const [sources, setSources] = useState<Source[]>([]);
+  const [cancellation, setCancellation] =
+    useState<ChatResult["cancellation"]>();
+  const memoryToken = useRef<string | undefined>(undefined);
+  const requestAbort = useRef<AbortController | null>(null);
+  const interrupted = useRef(false);
+  const suspended = useRef(false);
+  const speechTurn = useRef<string | undefined>(undefined);
+  const updateMetric = (id: string, patch: Partial<TurnMetric>) =>
+    setTurns((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, ...patch } : row)),
+    );
   const [view, setView] = useState<View>("reception");
   const [user, setUser] = useState<User | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -110,6 +137,7 @@ export function CarelineApp() {
   const speechAudio = useRef<HTMLAudioElement | null>(null);
   const speechUrl = useRef<string | null>(null);
   const stopSpeech = useCallback(() => {
+    suspended.current = false;
     speechVersion.current++;
     speechAbort.current?.abort();
     speechAbort.current = null;
@@ -126,8 +154,19 @@ export function CarelineApp() {
   const voice = useHandsFreeVoice({
     active: active && view === "reception",
     paused: busy,
+    pauseMs,
+    speaking,
     onSpeechStart: () => {
-      stopSpeech();
+      if (speechAudio.current || speechAbort.current) {
+        const started = performance.now();
+        suspended.current = true;
+        interrupted.current = true;
+        speechAudio.current?.pause();
+        if (speechTurn.current)
+          updateMetric(speechTurn.current, {
+            interruptionStopMs: performance.now() - started,
+          });
+      }
       setSpeaking(false);
     },
     onAudio: transcribeTurn,
@@ -184,16 +223,23 @@ export function CarelineApp() {
   useEffect(
     () => () => {
       callVersion.current++;
+      requestAbort.current?.abort();
       stopSpeech();
     },
     [stopSpeech],
   );
-  async function speak(text: string) {
+  async function speak(
+    text: string,
+    metricId?: string,
+    speechEndedAt?: number,
+  ) {
+    const speechStarted = performance.now();
     stopSpeech();
     if (muted) {
       setSpeaking(false);
       return;
     }
+    speechTurn.current = metricId;
     const version = speechVersion.current;
     const controller = new AbortController();
     speechAbort.current = controller;
@@ -202,7 +248,7 @@ export function CarelineApp() {
       const response = await fetch("/api/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text.replace(/[*#]/g, "") }),
+        body: JSON.stringify({ text: text.replace(/[*#]/g, ""), language }),
         signal: controller.signal,
       });
       if (!response.ok)
@@ -218,6 +264,22 @@ export function CarelineApp() {
       speechUrl.current = url;
       const audio = new Audio(url);
       speechAudio.current = audio;
+      let measured = false;
+      audio.onplaying = () => {
+        if (suspended.current) {
+          audio.pause();
+          return;
+        }
+        if (!measured && metricId) {
+          measured = true;
+          updateMetric(metricId, {
+            speechStartMs: performance.now() - speechStarted,
+            ...(speechEndedAt === undefined
+              ? {}
+              : { responseLatencyMs: performance.now() - speechEndedAt }),
+          });
+        }
+      };
       audio.onended = () => {
         if (version !== speechVersion.current) return;
         stopSpeech();
@@ -231,7 +293,10 @@ export function CarelineApp() {
           "Voice playback failed. You can still read and type messages.",
         );
       };
-      await Promise.all([source.load(), audio.play()]);
+      await Promise.all([
+        source.load(),
+        suspended.current ? Promise.resolve() : audio.play(),
+      ]);
     } catch (error) {
       if (version !== speechVersion.current) return;
       stopSpeech();
@@ -244,6 +309,7 @@ export function CarelineApp() {
     }
   }
   function endCall() {
+    requestAbort.current?.abort();
     voice.stop();
     speechVersion.current++;
     callVersion.current++;
@@ -265,7 +331,7 @@ export function CarelineApp() {
       const hello = messages.length
         ? "I'm listening. We can continue our conversation by voice."
         : user
-          ? "Welcome back to CareLine. What brings you in today?"
+          ? "Welcome back to CareLine AI. What brings you in today?"
           : greeting;
       setMessages((v) =>
         v.length ? v : [{ role: "assistant", content: hello }],
@@ -286,6 +352,13 @@ export function CarelineApp() {
     setRegistration(undefined);
     setChoices([]);
     setMessages([]);
+    memoryToken.current = undefined;
+    interrupted.current = false;
+    setPreferences(undefined);
+    setHandoff(undefined);
+    setCancellation(undefined);
+    setSources([]);
+    setTurns([]);
     setError("");
     setNotice("");
   }
@@ -334,7 +407,7 @@ export function CarelineApp() {
   async function signOut() {
     try {
       await api("/api/auth", "POST", { action: "signout" });
-      endCall();
+      resetConversation();
       setUser(null);
       setMessages([]);
       setProposal(undefined);
@@ -347,14 +420,47 @@ export function CarelineApp() {
       setError((e as Error).message);
     }
   }
-  async function send(text: string) {
+  async function send(
+    text: string,
+    voiceTiming?: {
+      endedAt: number;
+      endpointMs: number;
+      transcriptionMs: number;
+    },
+  ) {
     if (!text.trim() || sending.current) return;
     sending.current = true;
     const version = callVersion.current;
+    requestAbort.current?.abort();
+    const controller = new AbortController();
+    requestAbort.current = controller;
+    const started = performance.now();
+    const metricId = crypto.randomUUID();
+    setTurns((rows) =>
+      [
+        ...rows,
+        {
+          id: metricId,
+          mode: voiceTiming ? ("voice" as const) : ("text" as const),
+          status: "ok" as const,
+          chatMs: 0,
+          ...(voiceTiming
+            ? {
+                transcriptionMs: voiceTiming.transcriptionMs,
+                endpointMs: voiceTiming.endpointMs,
+              }
+            : {}),
+        },
+      ].slice(-50),
+    );
     setBusy(true);
     setError("");
     setInput("");
     setProposal(undefined);
+    setRegistration(undefined);
+    setCancellation(undefined);
+    setHandoff(undefined);
+    setSources([]);
     setChoices([]);
     stopSpeech();
     setSpeaking(false);
@@ -364,20 +470,41 @@ export function CarelineApp() {
     ];
     setMessages(updated);
     try {
-      const result = await api<{
-        text: string;
-        proposal?: Proposal;
-        registration?: Registration;
-        actions: string[];
-      }>("/api/chat", "POST", { messages: updated.slice(-24) });
+      const result = await api<ChatResult>(
+        "/api/chat",
+        "POST",
+        {
+          messages: updated.slice(-24),
+          language,
+          memoryToken: memoryToken.current,
+          interrupted: interrupted.current,
+        },
+        controller.signal,
+      );
       if (version !== callVersion.current) return;
       setMessages([...updated, { role: "assistant", content: result.text }]);
       setProposal(result.proposal);
       setRegistration(result.registration);
       setActions(result.actions);
-      if (active) speak(result.text);
+      memoryToken.current = result.memoryToken;
+      interrupted.current = false;
+      setPreferences(result.preferences);
+      setHandoff(result.handoff);
+      setCancellation(result.cancellation);
+      setSources(result.sources || []);
+      updateMetric(metricId, {
+        chatMs: performance.now() - started,
+        diagnostics: result.diagnostics,
+      });
+      if (active) void speak(result.text, metricId, voiceTiming?.endedAt);
     } catch (e) {
-      if (version === callVersion.current) setError((e as Error).message);
+      if (version === callVersion.current) {
+        updateMetric(metricId, {
+          status: "error",
+          chatMs: performance.now() - started,
+        });
+        if (!controller.signal.aborted) setError((e as Error).message);
+      }
     } finally {
       if (version === callVersion.current) {
         setBusy(false);
@@ -392,17 +519,21 @@ export function CarelineApp() {
     try {
       const confirmed = await api<{ code: string }>(
         "/api/appointments",
-        "POST",
+        proposal.replaces ? "PATCH" : "POST",
         { token: proposal.token },
       );
-      await Promise.all([refresh(), refreshBookings()]);
       setProposal(undefined);
       setChoices([]);
-      const text = `Your appointment is confirmed. Your appointment code is ${confirmed.code}. You can find it in My appointments.`;
+      const text = `${proposal.replaces ? "Your appointment has been rescheduled" : "Your appointment is confirmed"}. Your appointment code is ${confirmed.code}. You can find it in My appointments.`;
       setMessages((v) => [...v, { role: "assistant", content: text }]);
       setNotice(`Appointment confirmed. Code: ${confirmed.code}`);
       if (active)
         speak(text.replace(confirmed.code, confirmed.code.split("").join(" ")));
+      await Promise.all([refresh(), refreshBookings()]).catch(() => {
+        setError(
+          "Your appointment was saved, but the appointment list could not refresh. Reload to see it.",
+        );
+      });
     } catch (e) {
       setError((e as Error).message);
       void refresh().catch(() => {});
@@ -410,13 +541,20 @@ export function CarelineApp() {
       setBusy(false);
     }
   }
-  async function transcribeTurn(audio: Blob) {
+  async function transcribeTurn(
+    audio: Blob,
+    timing: { endedAt: number; endpointMs: number },
+  ) {
     const version = callVersion.current;
     if (!active || busy || sending.current) return;
+    const started = performance.now();
+    const controller = new AbortController();
+    requestAbort.current = controller;
     setBusy(true);
     setError("");
     try {
       const data = new FormData();
+      data.set("language", language);
       const type = audio.type.split(";")[0];
       data.set(
         "audio",
@@ -426,14 +564,31 @@ export function CarelineApp() {
       const response = await fetch("/api/transcribe", {
         method: "POST",
         body: data,
+        signal: controller.signal,
       });
       const result = await response.json();
       if (version !== callVersion.current) return;
       if (!response.ok)
         throw new Error(result.error || "Could not transcribe that turn.");
-      if (result.text?.trim()) await send(result.text);
+      if (
+        interrupted.current &&
+        (!result.text?.trim() || isBackchannel(result.text))
+      ) {
+        suspended.current = false;
+        interrupted.current = false;
+        if (speechAudio.current) {
+          await speechAudio.current.play();
+          setSpeaking(true);
+        }
+      } else if (result.text?.trim())
+        await send(result.text, {
+          ...timing,
+          transcriptionMs: performance.now() - started,
+        });
     } catch (e) {
-      if (version === callVersion.current) {
+      if (version === callVersion.current && !controller.signal.aborted) {
+        stopSpeech();
+        setSpeaking(false);
         voice.stop();
         setError((e as Error).message);
       }
@@ -479,10 +634,19 @@ export function CarelineApp() {
     setBusy(true);
     try {
       await api("/api/appointments", "DELETE", { id: cancelId });
-      await Promise.all([refreshBookings(), refresh()]);
       cancelDialog.current?.close();
       setCancelId(undefined);
+      setCancellation(undefined);
+      setMessages((rows) => [
+        ...rows,
+        { role: "assistant", content: "Your appointment has been cancelled." },
+      ]);
       setNotice("Appointment cancelled.");
+      await Promise.all([refreshBookings(), refresh()]).catch(() => {
+        setError(
+          "Your appointment was cancelled, but the list could not refresh. Reload to see it.",
+        );
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -492,7 +656,7 @@ export function CarelineApp() {
   const visibleBookings = bookings;
   const available = slots;
   const nav = [
-    { id: "reception" as const, label: "Reception", icon: Headphones },
+    { id: "reception" as const, label: "Voice demo", icon: Headphones },
     {
       id: "appointments" as const,
       label: "My appointments",
@@ -513,17 +677,20 @@ export function CarelineApp() {
             : voice.listening
               ? "Listening - go ahead"
               : "Microphone paused"
-          : "Your receptionist is ready";
+          : "Ready when you are";
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <a className="brand" href="/" aria-label="CareLine home">
+        <a className="brand" href="/" aria-label="CareLine AI home">
           <span className="brand-mark">
             <Plus size={25} />
           </span>
-          careline<span className="brand-dot">.</span>
+          <span className="brand-copy">
+            <span>CareLine AI</span>
+            <span className="brand-subtitle">Conversational Voice Agent</span>
+          </span>
         </a>
-        <div className="sidebar-label">YOUR CARE, CONNECTED</div>
+        <div className="sidebar-label">EXPLORE THE DEMO</div>
         <nav aria-label="Main navigation">
           {nav.map((n) => (
             <button
@@ -538,30 +705,19 @@ export function CarelineApp() {
             </button>
           ))}
         </nav>
-        <div className="sidebar-note">
-          <span className="tiny-icon">
-            <Heart size={18} />
-          </span>
-          <h3>
-            A little less waiting.
-            <br />A little more care.
-          </h3>
-          <p>Find your specialist, on your schedule.</p>
-          <span className="note-line" />
-        </div>
         <div className="sidebar-bottom">
           <span className="online-dot" />
-          Portfolio demo<span>v1.0</span>
+          Built by Yash Jobalia
         </div>
       </aside>
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumb">
-            CareLine Clinic <ChevronRight size={14} />
+            CareLine AI <ChevronRight size={14} />
             <strong>{nav.find((n) => n.id === view)?.label}</strong>
           </div>
           <div className="topbar-right">
-            <span className="demo-badge">FICTIONAL CLINIC</span>
+            <span className="demo-badge">AI DEMO</span>
             {user ? (
               <button className="user-pill" onClick={() => setView("account")}>
                 <span className="avatar-small">
@@ -579,38 +735,26 @@ export function CarelineApp() {
         <main className="main-content">
           <div className="page-heading">
             <div>
-              <div className="eyebrow">
-                <span /> MULTISPECIALTY CARE, MADE SIMPLE
-              </div>
+              <div className="eyebrow">VOICE &amp; CONVERSATIONAL AI</div>
               <h1>
-                {view === "reception" ? (
-                  <>
-                    Your next appointment
-                    <br />
-                    <em>starts with a conversation.</em>
-                  </>
-                ) : view === "appointments" ? (
-                  "Your care, all in one place."
-                ) : view === "specialists" ? (
-                  "A specialist for your next step."
-                ) : (
-                  "Welcome to your space."
-                )}
+                {view === "reception"
+                  ? "Try the voice agent."
+                  : view === "appointments"
+                    ? "My appointments"
+                    : view === "specialists"
+                      ? "Our specialists"
+                      : "My account"}
               </h1>
               <p>
                 {view === "reception"
-                  ? "Tell us what you need. We’ll help you find the right department, physician, and time."
+                  ? "Speak naturally, change your mind, or switch languages. Try it with a fictional appointment."
                   : view === "appointments"
                     ? "Review your upcoming visits and manage your demo appointments."
                     : view === "specialists"
-                      ? "Six fictional physicians. Three specialties. One simple conversation."
+                      ? "Browse the fictional physicians available in this demo."
                       : "Manage your profile and keep your appointments connected."}
               </p>
             </div>
-            <span className="heading-seal">
-              <ShieldCheck size={18} />
-              Thoughtfully connected
-            </span>
           </div>
           {error && (
             <div className="alert alert-error" role="alert">
@@ -634,13 +778,61 @@ export function CarelineApp() {
           )}
           {view === "reception" && (
             <>
-              <div className="inline-banner">
-                <Sparkles size={18} />
-                <span>
-                  Speak or type to get started. No account needed to talk. Use
-                  fictional patient details for this demo.
-                </span>
-              </div>
+              {sources.length > 0 && (
+                <div className="source-cards" aria-label="Clinic sources">
+                  {sources.map((source) => (
+                    <a
+                      key={source.id}
+                      href={source.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Source: {source.title} ↗
+                    </a>
+                  ))}
+                </div>
+              )}
+              {handoff && (
+                <Card className="handoff-card">
+                  <h3>Staff-handoff preview</h3>
+                  <p>
+                    No staff have been contacted. This preview stays in this
+                    browser session.
+                  </p>
+                  <dl>
+                    <dt>Reason</dt>
+                    <dd>{handoff.reason}</dd>
+                    <dt>Summary</dt>
+                    <dd>{handoff.summary}</dd>
+                    <dt>Still needed</dt>
+                    <dd>{handoff.unresolved}</dd>
+                  </dl>
+                  <Button
+                    variant="outline"
+                    onClick={() => setHandoff(undefined)}
+                  >
+                    Dismiss preview
+                  </Button>
+                </Card>
+              )}
+              {cancellation && (
+                <Card className="proposal">
+                  <div>
+                    <h3>Review cancellation</h3>
+                    <p>{cancellation.label}</p>
+                    <small>Your appointment is still confirmed.</small>
+                  </div>
+                  <Button
+                    disabled={busy}
+                    onClick={() => {
+                      setCancelId(cancellation.id);
+                      cancelDialog.current?.showModal();
+                    }}
+                  >
+                    Review cancellation
+                  </Button>
+                </Card>
+              )}
               {credentials && (
                 <Card className="proposal">
                   <div>
@@ -702,7 +894,7 @@ export function CarelineApp() {
                 <Card className="call-card">
                   <div className="card-top">
                     <span className="overline">
-                      <Headphones size={15} /> YOUR VIRTUAL RECEPTIONIST
+                      <Headphones size={15} /> VOICE AGENT
                     </span>
                     <span className="availability">
                       <span className="online-dot" />
@@ -732,14 +924,11 @@ export function CarelineApp() {
                         <Sparkles size={17} />
                       </span>
                     </div>
-                    <span className="call-name">
-                      Meet your CareLine assistant
-                    </span>
                     <h2>{status}</h2>
                     <p>
                       {active
                         ? "Speak naturally, or type in the conversation panel."
-                        : "A friendly voice to help you find your next appointment."}
+                        : "Try asking for a time, then change the day or doctor."}
                     </p>
                     <div className="call-duration">
                       {active
@@ -749,7 +938,7 @@ export function CarelineApp() {
                               2,
                               "0",
                             )}:${(seconds % 60).toString().padStart(2, "0")}`
-                        : "No phone number. Just a conversation."}
+                        : "No sign-in needed to try it."}
                     </div>
                     <div className="call-controls">
                       {active ? (
@@ -841,7 +1030,7 @@ export function CarelineApp() {
                         <span>
                           <Headphones size={26} />
                         </span>
-                        <h3>We’re here to listen.</h3>
+                        <h3>Start a conversation</h3>
                         <p>
                           Type a message below, or start a voice conversation.
                         </p>
@@ -892,7 +1081,7 @@ export function CarelineApp() {
                   >
                     <input
                       aria-label="Message the receptionist"
-                      placeholder="Type your message anytime?"
+                      placeholder="Type a message..."
                       value={input}
                       maxLength={1000}
                       onChange={(e) => setInput(e.target.value)}
@@ -913,7 +1102,18 @@ export function CarelineApp() {
                     <CalendarDays size={25} />
                   </div>
                   <div>
-                    <span className="overline">REVIEW YOUR APPOINTMENT</span>
+                    <span className="overline">
+                      {proposal.replaces
+                        ? "REVIEW YOUR RESCHEDULE"
+                        : "REVIEW YOUR APPOINTMENT"}
+                    </span>
+                    {proposal.replaces && (
+                      <p>
+                        Moving from {formatSlot(proposal.replaces.slot)}. Your
+                        original appointment stays confirmed until this move
+                        succeeds.
+                      </p>
+                    )}
                     <h3>{doctorFor(proposal.slot.doctor_id)?.name}</h3>
                     <p>
                       {formatSlot(proposal.slot)} · {proposal.patientName}
@@ -942,47 +1142,21 @@ export function CarelineApp() {
                   </Button>
                   <Button onClick={confirmBooking} disabled={busy}>
                     <Check size={16} />
-                    Confirm appointment
+                    {proposal.replaces
+                      ? "Confirm reschedule"
+                      : "Confirm appointment"}
                   </Button>
                 </Card>
               )}
-              <div className="section-heading">
-                <h2>Care for every part of you.</h2>
-                <button onClick={() => setView("specialists")}>
-                  Meet our specialists <ArrowRight size={15} />
-                </button>
-              </div>
-              <div className="department-grid">
-                {departments.map((d, i) => (
-                  <Card
-                    key={d.id}
-                    className={`department-card department-${i}`}
-                  >
-                    <div className="department-title">
-                      <span className="department-icon">
-                        {i === 0 ? (
-                          <Heart size={22} />
-                        ) : i === 1 ? (
-                          <Activity size={22} />
-                        ) : (
-                          <Sparkles size={22} />
-                        )}
-                      </span>
-                      <span className="doctor-count">2 physicians</span>
-                    </div>
-                    <h3>{d.name}</h3>
-                    <p>{d.short}</p>
-                    <button
-                      onClick={() => {
-                        setDepartmentFilter(d.id);
-                        setView("specialists");
-                      }}
-                    >
-                      Explore specialty <ArrowRight size={16} />
-                    </button>
-                  </Card>
-                ))}
-              </div>
+              <ConversationLab
+                turns={turns}
+                preferences={preferences}
+                language={language}
+                onLanguage={setLanguage}
+                pauseMs={pauseMs}
+                onPause={setPauseMs}
+                onClear={() => setTurns([])}
+              />
             </>
           )}
           {view === "appointments" && (
@@ -1181,11 +1355,8 @@ export function CarelineApp() {
               </Card>
             ))}
           <footer className="page-footer">
-            <span>
-              CARELINE <span className="footer-plus">+</span> A portfolio
-              project with care at its heart.
-            </span>
-            <span>Central time (America/Chicago) · Fictional clinic</span>
+            <span>CareLine AI · Built by Yash Jobalia</span>
+            <span>Fictional scheduling demo · America/Chicago</span>
           </footer>
         </main>
       </div>
@@ -1205,7 +1376,7 @@ export function CarelineApp() {
         </h2>
         <p>
           {authMode === "signin"
-            ? "Sign in to manage your CareLine appointments."
+            ? "Sign in to manage your CareLine AI appointments."
             : "Create your account for this fictional clinic demo."}
         </p>
         <form onSubmit={submitAuth}>
@@ -1268,7 +1439,7 @@ export function CarelineApp() {
           }}
         >
           {authMode === "signin"
-            ? "New to CareLine? Create an account"
+            ? "New to CareLine AI? Create an account"
             : "Already have an account? Sign in"}
         </button>
       </dialog>

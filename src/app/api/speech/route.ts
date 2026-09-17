@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { languageSchema } from "@/lib/conversation";
 import {
   authorizeAI,
   failure,
@@ -17,8 +18,11 @@ export async function POST(req: Request) {
       throw new HttpError(503, "The AI receptionist is not configured yet.");
     if (Number(req.headers.get("content-length")) > 20000)
       throw new HttpError(413, "Speech text is too long.");
-    const { text } = z
-      .object({ text: z.string().trim().min(1).max(4000) })
+    const { text, language } = z
+      .object({
+        text: z.string().trim().min(1).max(4000),
+        language: languageSchema.default("auto"),
+      })
       .parse(await req.json());
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
       method: "POST",
@@ -32,6 +36,7 @@ export async function POST(req: Request) {
         input: text,
         response_format: "mp3",
         instructions:
+          `Language preference: ${language}. Preserve the language of the supplied text. ` +
           "Speak as a warm, calm, approachable clinic receptionist. Use a natural conversational pace, gentle expression and brief pauses. Sound attentive and empathetic, never robotic, overly cheerful, theatrical or rushed. Read the provided words without adding anything. Pronounce doctors' names and appointment times clearly.",
       }),
       signal: AbortSignal.any([req.signal, AbortSignal.timeout(25000)]),
@@ -45,6 +50,7 @@ export async function POST(req: Request) {
       headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
     });
   } catch (error) {
+    if (req.signal.aborted) return new Response(null, { status: 499 });
     return failure(error);
   }
 }

@@ -1,12 +1,18 @@
 "use client";
 
+import { VoiceActivity } from "@/lib/voice-activity";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Options = {
   active: boolean;
   paused: boolean;
   onSpeechStart: () => void;
-  onAudio: (audio: Blob) => Promise<void>;
+  onAudio: (
+    audio: Blob,
+    timing: { endedAt: number; endpointMs: number },
+  ) => Promise<void>;
+  pauseMs?: number;
+  speaking?: boolean;
   onError: (message: string) => void;
 };
 
@@ -127,9 +133,12 @@ export function useHandsFreeVoice(options: Options) {
           });
           recorder = r;
           const beganAt = performance.now();
-          let lastVoiceAt = beganAt;
-          let voiceFrames = 0;
-          let hasSpeech = false;
+          const detector = new VoiceActivity(
+            beganAt,
+            callbacks.current.pauseMs || 1000,
+            callbacks.current.speaking ? 280 : 160,
+          );
+          let timing = { endedAt: beganAt, endpointMs: 0 };
           r.ondataavailable = (event) => {
             if (event.data.size) chunks.push(event.data);
           };
@@ -148,7 +157,7 @@ export function useHandsFreeVoice(options: Options) {
             setListening(false);
             setHearingSpeech(false);
             const blob = new Blob(chunks, { type: r.mimeType });
-            void callbacks.current.onAudio(blob).catch(() => {
+            void callbacks.current.onAudio(blob, timing).catch(() => {
               stop();
               callbacks.current.onError(
                 "Could not process that turn. Enable the microphone to retry, or type instead.",
@@ -165,23 +174,17 @@ export function useHandsFreeVoice(options: Options) {
                 samples.length,
             );
             const now = performance.now();
-            if (rms > 0.018) {
-              voiceFrames++;
-              lastVoiceAt = now;
-              if (voiceFrames >= 6 && !hasSpeech) {
-                hasSpeech = true;
-                setHearingSpeech(true);
-                callbacks.current.onSpeechStart();
-              }
-            } else if (!hasSpeech) {
-              voiceFrames = 0;
+            const activity = detector.update(rms, now);
+            if (activity.speechStart) {
+              setHearingSpeech(true);
+              callbacks.current.onSpeechStart();
             }
-            // A natural pause ends a turn. A long silent room only resets the local buffer.
-            if (
-              (hasSpeech && now - lastVoiceAt > 850) ||
-              now - beganAt > 29000
-            ) {
-              accepted = hasSpeech;
+            if (activity.done) {
+              accepted = activity.accepted;
+              timing = {
+                endedAt: activity.endedAt,
+                endpointMs: activity.endpointMs,
+              };
               r.stop();
               return;
             }

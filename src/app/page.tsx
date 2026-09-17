@@ -1,4 +1,4 @@
-import { CarelineApp } from "@/components/careline-app";
+import { CarelineWorkspace } from "@/components/careline-workspace";
 export default function Page() {
-  return <CarelineApp />;
+  return <CarelineWorkspace />;
 }

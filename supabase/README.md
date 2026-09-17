@@ -4,7 +4,7 @@
 
 Created and initialized in **YashJobalia's Org** on 2026-09-16.
 
-- Project: `careline` (`ofdidlumvcgynpdatpre`)
+- Project: `careline-voice-ai` (`ofdidlumvcgynpdatpre`)
 - Region: `us-east-2`
 - Dashboard: https://supabase.com/dashboard/project/ofdidlumvcgynpdatpre
 - API URL: https://ofdidlumvcgynpdatpre.supabase.co
@@ -15,7 +15,7 @@ Created and initialized in **YashJobalia's Org** on 2026-09-16.
 
 ## Reproducing in a fresh project
 
-1. Create a free Supabase project named **careline** in your own organization, in a US region near your Vercel deployment.
+1. Create a free Supabase project named **careline-voice-ai** in your own organization, in a US region near your Vercel deployment.
 2. Open the project's SQL editor and run `setup.sql`, then `user-accounts.sql`, then `private-functions.sql`, once each. The hosted project already has these migrations applied. Do not rerun the old bootstrap on the upgraded schema.
 3. Verify the final result shows 3 departments, 6 physicians, and available slots (360 on initial setup).
 4. Copy the project URL and publishable key into `.env.local` (copy `.env.example` first):

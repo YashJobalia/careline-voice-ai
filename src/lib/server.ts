@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { ZodError } from "zod";
 import { cookies } from "next/headers";
 import { supabaseServer } from "./supabase";
+import { HttpError } from "./http-error";
+export { HttpError } from "./http-error";
 export const databaseReady = () =>
   Boolean(
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -11,14 +13,6 @@ export const liveReady = () =>
   Boolean(
     databaseReady() && process.env.OPENAI_API_KEY && process.env.SESSION_SECRET,
   );
-export class HttpError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
 export function equal(a: string, b: string) {
   const aa = Buffer.from(a),
     bb = Buffer.from(b);
@@ -57,6 +51,11 @@ export type Session = {
   name: string;
   guest?: boolean;
   patientId?: string;
+  role?: "patient" | "doctor";
+  doctorId?: string;
+  dateOfBirth?: string;
+  gender?: string | null;
+  phone?: string;
 };
 export async function session(): Promise<Session> {
   if (!databaseReady())
@@ -67,13 +66,23 @@ export async function session(): Promise<Session> {
     error,
   } = await supabase.auth.getUser();
   if (error || !user) throw new HttpError(401, "Please sign in to continue.");
+  const { data: profile } = await supabase
+    .from("careline_patients")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
   return {
     id: user.id,
     exp: Date.now() + 30 * 60 * 1000,
     email: user.email,
-    guest: !user.email,
+    guest: Boolean(user.is_anonymous),
+    role: profile?.account_type || "patient",
+    doctorId: profile?.doctor_id || undefined,
+    phone: profile?.phone || "",
+    dateOfBirth: profile?.date_of_birth || "",
+    gender: profile?.gender ?? null,
     patientId: user.user_metadata?.patient_id,
-    name: String(user.user_metadata?.display_name || ""),
+    name: String(profile?.full_name || user.user_metadata?.display_name || ""),
   };
 }
 export async function authorizeAI() {

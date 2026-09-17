@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { patientDetails } from "@/lib/patient";
+import { authorizeAI } from "@/lib/server";
+import { registerAccount } from "@/lib/workspace-server";
 import { cookies } from "next/headers";
 import { supabaseServer } from "@/lib/supabase";
 import {
@@ -7,6 +10,7 @@ import {
   sameOrigin,
   session,
   liveReady,
+  db,
 } from "@/lib/server";
 export async function GET() {
   try {
@@ -22,27 +26,57 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     sameOrigin(req);
+    const raw = await req.json();
     const p = z
       .object({
-        action: z.enum(["signin", "signup", "signout", "profile"]),
+        action: z.enum(["signin", "signup", "signout", "profile", "password"]),
         email: z.string().trim().min(3).max(254).optional(),
         password: z.string().min(8).max(128).optional(),
         name: z.string().trim().min(2).max(60).optional(),
       })
-      .parse(await req.json());
+      .parse(raw);
     const supabase = await supabaseServer();
+    if (p.action === "signup") {
+      const details = patientDetails.parse(raw);
+      const password = z.string().min(10).max(128).parse(raw.password);
+      const visitor = await authorizeAI();
+      if (!visitor.guest)
+        throw new HttpError(409, "Sign out before creating another account.");
+      return Response.json(await registerAccount(details, password), {
+        headers: { "Cache-Control": "no-store" },
+      });
+    }
+    if (p.action === "password") {
+      const visitor = await session();
+      if (visitor.guest) throw new HttpError(401, "Sign in first.");
+      const password = z.string().min(10).max(128).parse(raw.password);
+      const currentPassword = z
+        .string()
+        .min(1)
+        .max(128)
+        .parse(raw.currentPassword);
+      const { error: check } = await supabase.auth.signInWithPassword({
+        email: visitor.email!,
+        password: currentPassword,
+      });
+      if (check) throw new HttpError(400, "Current password is incorrect.");
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw new HttpError(400, "Could not change password.");
+      return Response.json({ ok: true });
+    }
     if (p.action === "signout") {
       await supabase.auth.signOut();
       (await cookies()).delete("careline-ai");
       return Response.json({ ok: true });
     }
     if (p.action === "profile") {
-      await session();
+      const visitor = await session();
+      if (visitor.guest) throw new HttpError(401, "Sign in first.");
       if (!p.name) throw new HttpError(400, "Enter a display name.");
-      const { error } = await supabase.auth.updateUser({
-        data: { display_name: p.name },
+      await db(`careline_patients?user_id=eq.${visitor.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ full_name: p.name }),
       });
-      if (error) throw new HttpError(400, "Could not update your profile.");
       return Response.json({ ok: true });
     }
     if (!p.email || !p.password)
@@ -50,26 +84,14 @@ export async function POST(req: Request) {
     const loginEmail = p.email.includes("@")
       ? p.email
       : `${p.email.toLowerCase()}@patients.careline.invalid`;
-    const result =
-      p.action === "signup"
-        ? await supabase.auth.signUp({
-            email: loginEmail,
-            password: p.password,
-            options: {
-              data: { display_name: p.name || "Demo visitor" },
-              emailRedirectTo: `${new URL(req.url).origin}/auth/callback`,
-            },
-          })
-        : await supabase.auth.signInWithPassword({
-            email: loginEmail,
-            password: p.password,
-          });
+    const result = await supabase.auth.signInWithPassword({
+      email: loginEmail,
+      password: p.password,
+    });
     if (result.error)
       throw new HttpError(
         result.error.status === 429 ? 429 : 400,
-        p.action === "signin"
-          ? "Could not sign in. Check your credentials and confirm your email."
-          : "Could not create the account. Try again later or sign in if you already have an account.",
+        "Could not sign in. Check your email and password.",
       );
     return Response.json({ ok: true, needsConfirmation: !result.data.session });
   } catch (e) {
