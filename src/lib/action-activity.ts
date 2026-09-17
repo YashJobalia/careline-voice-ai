@@ -1,3 +1,4 @@
+import { actionContracts } from "./semantic/actions";
 export type ActionActivity = {
   label: string;
   detail: string;
@@ -7,8 +8,13 @@ export type ActionActivity = {
 };
 
 const labels: Record<string, string> = {
-  message_doctor: "Leave a message for the doctor",
-  reset_password: "Request a password reset",
+  ...Object.fromEntries(
+    Object.entries(actionContracts).map(([action, contract]) => [
+      action,
+      contract.label,
+    ]),
+  ),
+  get_ontology: "Read CareLine domain definitions",
   get_capabilities: "Check account permissions",
   lookup_account: "Look up an account",
   start_signin: "Open sign-in",
@@ -21,15 +27,6 @@ const labels: Record<string, string> = {
   end_call: "End the call",
   mute: "Mute the microphone",
   confirm: "Apply confirmed changes",
-  register: "Create an account",
-  book: "Book an appointment",
-  reschedule: "Reschedule an appointment",
-  cancel: "Cancel an appointment",
-  request_reschedule: "Request rescheduling",
-  update_profile: "Update account details",
-  change_password: "Change password",
-  clear_history: "Clear conversation history",
-  signout: "Sign out",
 };
 
 // Only allowlisted labels and aggregate counts enter the activity panel.

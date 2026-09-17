@@ -1,7 +1,9 @@
 import type { Session } from "./server";
+import { semanticCatalog } from "./semantic/catalog";
 
 export function miraCapabilities(user: Pick<Session, "guest" | "role">) {
   return {
+    ontology: semanticCatalog(user),
     assistant: "Mira",
     identity: user.guest ? "guest" : user.role || "patient",
     pages: [

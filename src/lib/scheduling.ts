@@ -1,5 +1,7 @@
 import { db, HttpError, sign, type Session } from "./server";
 import { doctorFor, type Appointment, type Slot } from "./clinic";
+import { assertActionFacts } from "./semantic/policy";
+import { appointmentState } from "./semantic/ontology";
 export async function availableSlots(department?: string, doctorId?: string) {
   const slots = await db<Slot[]>("rpc/careline_get_slots", {
     method: "POST",
@@ -24,14 +26,32 @@ export async function proposal(
   if (!slot) throw new HttpError(409, "This slot is no longer available.");
   const replaces = replacesId
     ? (await appointments(visitor.id)).find(
-        (a) =>
-          a.id === replacesId &&
-          a.status === "confirmed" &&
-          new Date(a.slot.starts_at).getTime() > Date.now(),
+        (a) => a.id === replacesId && appointmentState(a).changeable,
       )
     : undefined;
   if (replacesId && !replaces)
     throw new HttpError(409, "The original appointment cannot be rescheduled.");
+  assertActionFacts(
+    visitor,
+    replacesId
+      ? { action: "reschedule", id: replacesId, slotId }
+      : {
+          action: "book",
+          slotId,
+          notes: {
+            concern: "Not provided",
+            duration: "Not provided",
+            severity: "Not provided",
+            context: "",
+          },
+        },
+    {
+      availableSlot: slot,
+      appointment: replaces
+        ? { ...replaces, session_id: visitor.id }
+        : undefined,
+    },
+  );
   return {
     slot,
     patientName,

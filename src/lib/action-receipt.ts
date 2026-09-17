@@ -1,3 +1,5 @@
+import { contractFor } from "./semantic/actions";
+import { ontologyVersion } from "./semantic/ontology";
 import type { ActionReceipt, Mutation, Visit } from "./workspace";
 import { doctors, formatSlot } from "./clinic";
 
@@ -10,19 +12,7 @@ export function makeReceipt(
     previousSlot?: Visit["slot"];
   },
 ): ActionReceipt {
-  const titles: Record<Mutation["action"], string> = {
-    message_doctor: "Message left for doctor",
-    reset_password: "Password reset requested",
-    register: "Account created",
-    book: "Appointment booked",
-    reschedule: "Appointment rescheduled",
-    cancel: "Appointment cancelled",
-    request_reschedule: "Rescheduling requested",
-    update_profile: "Account details updated",
-    change_password: "Password changed",
-    clear_history: "Conversation history cleared",
-    signout: "Signed out",
-  };
+  const contract = contractFor(action);
   const fields: ActionReceipt["fields"] = [];
   if (context.reference)
     fields.push({ label: "Reference", value: context.reference });
@@ -44,19 +34,17 @@ export function makeReceipt(
       label: "Previous time",
       value: formatSlot(context.previousSlot),
     });
-  const summary =
-    action === "message_doctor"
-      ? "Saved in the appointment notes for the doctor to review. No email or SMS was sent; this is not an urgent contact channel."
-      : action === "request_reschedule"
-        ? "The request is visible in the patient's appointments. The existing slot stays reserved. No email or SMS was sent."
-        : action === "update_profile"
-          ? "Your profile changes have been saved."
-          : action === "change_password"
-            ? "Save your new password privately before leaving this page."
-            : action === "cancel"
-              ? "This appointment is cancelled and its slot has been released."
-              : action === "book" || action === "reschedule"
-                ? "Your appointment is confirmed. You can find it in My appointments."
-                : titles[action] + ".";
-  return { id: context.id, action, title: titles[action], summary, fields };
+  return {
+    id: context.id,
+    action,
+    title: contract.title,
+    summary: contract.summary,
+    fields,
+    semantic: {
+      version: ontologyVersion,
+      state: "completed",
+      code: contract.outcome,
+      entity: contract.entity,
+    },
+  };
 }

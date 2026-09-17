@@ -69,46 +69,47 @@ export const visitNotes = z.object({
   severity: z.string().trim().min(1),
   context: z.string().trim().default(""),
 });
+export const mutationVariants = [
+  z.object({
+    action: z.literal("reset_password"),
+    email: z.string().trim().email().max(254),
+  }),
+  patientFields.extend({ action: z.literal("register") }),
+  z.object({
+    action: z.literal("book"),
+    slotId: z.uuid(),
+    notes: visitNotes,
+  }),
+  z.object({
+    action: z.literal("reschedule"),
+    id: z.uuid(),
+    slotId: z.uuid(),
+  }),
+  z.object({
+    action: z.literal("cancel"),
+    id: z.uuid(),
+    reason: z.string().max(600).default(""),
+  }),
+  z.object({
+    action: z.literal("request_reschedule"),
+    id: z.uuid(),
+    reason: z.string().max(600).default(""),
+  }),
+  patientFields
+    .omit({ email: true })
+    .extend({ action: z.literal("update_profile") }),
+  z.object({
+    action: z.literal("message_doctor"),
+    id: z.uuid(),
+    summary: z.string().trim().min(3),
+  }),
+  z.object({ action: z.literal("clear_history") }),
+  z.object({ action: z.literal("change_password") }),
+  z.object({ action: z.literal("signout") }),
+] as const;
 export const mutation = z.preprocess(
   normalizeContact,
-  z.discriminatedUnion("action", [
-    z.object({
-      action: z.literal("reset_password"),
-      email: z.string().trim().email().max(254),
-    }),
-    patientFields.extend({ action: z.literal("register") }),
-    z.object({
-      action: z.literal("book"),
-      slotId: z.uuid(),
-      notes: visitNotes,
-    }),
-    z.object({
-      action: z.literal("reschedule"),
-      id: z.uuid(),
-      slotId: z.uuid(),
-    }),
-    z.object({
-      action: z.literal("cancel"),
-      id: z.uuid(),
-      reason: z.string().max(600).default(""),
-    }),
-    z.object({
-      action: z.literal("request_reschedule"),
-      id: z.uuid(),
-      reason: z.string().max(600).default(""),
-    }),
-    patientFields
-      .omit({ email: true })
-      .extend({ action: z.literal("update_profile") }),
-    z.object({
-      action: z.literal("message_doctor"),
-      id: z.uuid(),
-      summary: z.string().trim().min(3),
-    }),
-    z.object({ action: z.literal("clear_history") }),
-    z.object({ action: z.literal("change_password") }),
-    z.object({ action: z.literal("signout") }),
-  ]),
+  z.discriminatedUnion("action", mutationVariants),
 );
 export type Mutation = z.infer<typeof mutation>;
 export type PendingAction = {
@@ -117,6 +118,7 @@ export type PendingAction = {
   details: Mutation;
 };
 export type ActionResult = {
+  semantic?: SemanticOutcome;
   receipt?: ActionReceipt;
   ok?: boolean;
   message?: string;
@@ -132,11 +134,18 @@ export type ActionResult = {
   [key: string]: unknown;
 };
 export type ActionReceipt = {
+  semantic?: SemanticOutcome;
   id: string;
   title: string;
   action: string;
   summary: string;
   fields: { label: string; value: string }[];
+};
+export type SemanticOutcome = {
+  version: string;
+  state: "draft" | "completed";
+  code: string;
+  entity: string;
 };
 export type Visit = {
   id: string;

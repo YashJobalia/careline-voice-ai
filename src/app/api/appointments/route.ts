@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { appointments, proposal } from "@/lib/scheduling";
+import { appointments, proposal, availableSlots } from "@/lib/scheduling";
+import { assertActionFacts } from "@/lib/semantic/policy";
+import { actionOutcome } from "@/lib/semantic/catalog";
 import {
   db,
   failure,
@@ -46,8 +48,16 @@ export async function PUT(req: Request) {
 export async function DELETE(req: Request) {
   try {
     sameOrigin(req);
-    await session();
+    const visitor = await session();
     const { id } = z.object({ id: z.uuid() }).parse(await req.json());
+    const visit = (await appointments(visitor.id)).find((v) => v.id === id);
+    assertActionFacts(
+      visitor,
+      { action: "cancel", id, reason: "" },
+      {
+        appointment: visit ? { ...visit, session_id: visitor.id } : undefined,
+      },
+    );
     const cancelled = await db<boolean>("rpc/careline_cancel_booking", {
       method: "POST",
       body: JSON.stringify({ booking_id: id }),
@@ -57,7 +67,7 @@ export async function DELETE(req: Request) {
         409,
         "This appointment cannot be cancelled. Refresh your appointments.",
       );
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, semantic: actionOutcome("cancel") });
   } catch (e) {
     return failure(e);
   }
@@ -88,6 +98,22 @@ export async function POST(req: Request) {
       );
     if (p.sessionId !== visitor.id)
       throw new HttpError(403, "This booking belongs to another session.");
+    assertActionFacts(
+      visitor,
+      {
+        action: "book",
+        slotId: p.slotId,
+        notes: {
+          concern: "Not provided",
+          duration: "Not provided",
+          severity: "Not provided",
+          context: "",
+        },
+      },
+      {
+        availableSlot: (await availableSlots()).find((s) => s.id === p.slotId),
+      },
+    );
     const result = await db<{ id: string; appointment_code: string }[]>(
       "careline_appointments",
       {
@@ -100,7 +126,11 @@ export async function POST(req: Request) {
       },
     );
     return Response.json(
-      { id: result[0].id, code: result[0].appointment_code },
+      {
+        id: result[0].id,
+        code: result[0].appointment_code,
+        semantic: actionOutcome("book"),
+      },
       { status: 201 },
     );
   } catch (e) {
@@ -126,6 +156,24 @@ export async function PATCH(req: Request) {
     }>(token);
     if (p.kind !== "reschedule" || p.sessionId !== visitor.id)
       throw new HttpError(403, "Invalid rescheduling confirmation.");
+    const [visits, slots] = await Promise.all([
+      appointments(visitor.id),
+      availableSlots(),
+    ]);
+    const visit = visits.find((v) => v.id === p.replacesId);
+    assertActionFacts(
+      visitor,
+      { action: "reschedule", id: p.replacesId, slotId: p.slotId },
+      {
+        appointment: visit ? { ...visit, session_id: visitor.id } : undefined,
+        availableSlot: slots.find((s) => s.id === p.slotId),
+      },
+    );
+    if (visit!.slot_id !== p.oldSlotId)
+      throw new HttpError(
+        409,
+        "The appointment changed. Review a new rescheduling proposal.",
+      );
     const rows = await db<{ id: string; appointment_code: string }[]>(
       "rpc/careline_reschedule_booking",
       {
@@ -142,7 +190,11 @@ export async function PATCH(req: Request) {
         409,
         "Could not move this appointment. Your original appointment is unchanged.",
       );
-    return Response.json({ id: rows[0].id, code: rows[0].appointment_code });
+    return Response.json({
+      id: rows[0].id,
+      code: rows[0].appointment_code,
+      semantic: actionOutcome("reschedule"),
+    });
   } catch (error) {
     return failure(error);
   }

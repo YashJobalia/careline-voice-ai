@@ -18,6 +18,10 @@ import {
 import { patientDetails } from "./patient";
 import { miraCapabilities } from "./mira-capabilities";
 import { requestPasswordReset } from "./password-recovery";
+import { assertActionRole, assertActionFacts } from "./semantic/policy";
+import { contractFor } from "./semantic/actions";
+import { semanticCatalog } from "./semantic/catalog";
+import { appointmentState, ontologyVersion } from "./semantic/ontology";
 
 function describeVisit(visit: Visit) {
   return {
@@ -26,10 +30,8 @@ function describeVisit(visit: Visit) {
       ?.name,
     timeLabel: formatSlot(visit.slot),
     timeZone: "America/Chicago",
-    timing:
-      new Date(visit.slot.starts_at).getTime() <= Date.now()
-        ? "past"
-        : "upcoming",
+    timing: appointmentState(visit).timing,
+    semanticState: appointmentState(visit),
   };
 }
 
@@ -77,10 +79,7 @@ async function accessibleVisit(user: Session, id: string, clinic = false) {
   const visit = (await visits(user, clinic)).find((v) => v.id === id);
   if (!visit)
     throw new HttpError(404, "Appointment not found or not accessible.");
-  if (
-    visit.status !== "confirmed" ||
-    new Date(visit.slot.starts_at).getTime() <= Date.now()
-  )
+  if (!appointmentState(visit).changeable)
     throw new HttpError(
       409,
       "Only upcoming confirmed appointments can be changed.",
@@ -88,34 +87,21 @@ async function accessibleVisit(user: Session, id: string, clinic = false) {
   return visit;
 }
 async function validate(user: Session, p: Mutation) {
-  if (p.action === "reset_password") return;
-  if (p.action === "message_doctor") {
-    if (user.guest) throw new HttpError(401, "Sign in to leave a message.");
-    if (!(await visits(user)).some((v) => v.id === p.id))
-      throw new HttpError(403, "Choose one of your own appointments.");
-    return;
-  }
-  if (p.action === "register") {
-    if (!user.guest) throw new HttpError(409, "You already have an account.");
-    return;
-  }
-  if (p.action === "signout" || p.action === "clear_history") return;
-  if (user.guest)
-    throw new HttpError(401, "Create an account or sign in first.");
-  if (p.action === "request_reschedule" && user.role !== "doctor")
-    throw new HttpError(403, "Only doctors can request a patient reschedule.");
-  if (p.action === "book" || p.action === "reschedule") {
-    const slot = (await availableSlots()).find((s) => s.id === p.slotId);
-    if (!slot) throw new HttpError(409, "That slot is no longer available.");
-    if (slot.doctor_id === user.doctorId)
-      throw new HttpError(
-        400,
-        "You cannot book yourself. Choose another doctor.",
-      );
-    if (p.action === "reschedule") await accessibleVisit(user, p.id);
-  }
-  if (p.action === "cancel" || p.action === "request_reschedule")
-    await accessibleVisit(user, p.id, user.role === "doctor");
+  assertActionRole(user, p.action);
+  const contract = contractFor(p.action);
+  const [appointment, availableSlot] = await Promise.all([
+    contract.requiresAppointment && "id" in p
+      ? visits(
+          user,
+          user.role === "doctor" &&
+            ["clinic", "own_or_clinic"].includes(contract.access),
+        ).then((rows) => rows.find((v) => v.id === p.id))
+      : undefined,
+    contract.requiresSlot && "slotId" in p
+      ? availableSlots().then((rows) => rows.find((s) => s.id === p.slotId))
+      : undefined,
+  ]);
+  assertActionFacts(user, p, { appointment, availableSlot });
 }
 export async function registerAccount(
   details: z.infer<typeof patientDetails>,
@@ -228,6 +214,8 @@ export async function workspaceAction(
     })
     .parse(raw);
   const args = envelope.args || {};
+  if (envelope.action === "get_ontology")
+    return { ontology: semanticCatalog(user) };
   if (envelope.action === "get_capabilities")
     return { capabilities: miraCapabilities(user) };
   if (envelope.action === "lookup_account") {
@@ -386,28 +374,13 @@ export async function workspaceAction(
   }
   if (envelope.action === "prepare") {
     const details = mutation.parse(args);
-    if (
-      user.guest &&
-      !["register", "signout", "clear_history", "reset_password"].includes(
-        details.action,
-      )
-    )
+    if (user.guest && !contractFor(details.action).roles.includes("guest"))
       return requireAccount({
         page: details.action === "book" ? "appointments" : "account",
         ...(details.action === "book" ? { booking: true } : {}),
       });
     await validate(user, details);
-    const summaries: Partial<Record<Mutation["action"], string>> = {
-      update_profile: "Review account changes",
-      message_doctor: "Review message for your appointment doctor",
-      change_password: "Generate a new password",
-      reset_password: "Request a password reset email",
-      register: "Create your patient account",
-      clear_history: "Permanently clear saved conversation",
-      signout: "Sign out of your account",
-    };
-    let summary =
-      summaries[details.action] || details.action.replaceAll("_", " ");
+    let summary = contractFor(details.action).review;
     if (
       details.action === "cancel" ||
       details.action === "request_reschedule"
@@ -420,21 +393,31 @@ export async function workspaceAction(
       summary = `${details.action === "cancel" ? "Cancel" : "Request rescheduling for"} ${visit.appointment_code}: ${doctors.find((d) => d.id === visit.slot.doctor_id)?.name}, ${formatSlot(visit.slot)} (America/Chicago)`;
     }
     if (details.action === "message_doctor") {
-      const visit = (await visits(user)).find((v) => v.id === details.id)!;
+      const visit = (await visits(user)).find((v) => v.id === details.id);
+      if (!visit)
+        throw new HttpError(404, "Appointment not found or not accessible.");
       summary = `Leave a message for ${doctors.find((d) => d.id === visit.slot.doctor_id)?.name} about ${visit.appointment_code}`;
     }
     if (details.action === "book" || details.action === "reschedule") {
       const slot = (await availableSlots()).find(
         (s) => s.id === details.slotId,
-      )!;
+      );
+      if (!slot) throw new HttpError(409, "That slot is no longer available.");
       summary = `${details.action === "book" ? "Book" : "Move appointment to"} ${doctors.find((d) => d.id === slot.doctor_id)?.name}, ${formatSlot(slot)} (America/Chicago)`;
     }
     return {
+      semantic: {
+        version: ontologyVersion,
+        state: "draft",
+        code: "draft_prepared",
+        entity: contractFor(details.action).entity,
+      },
       pending: {
         details,
         summary,
         token: sign({
           kind: "workspace",
+          ontologyVersion,
           userId: user.id,
           details,
           exp: Date.now() + 600000,
@@ -447,12 +430,18 @@ export async function workspaceAction(
     throw new HttpError(400, "Unknown action.");
   const signed = verify<{
     kind: string;
+    ontologyVersion?: string;
     userId: string;
     details: Mutation;
     exp: number;
   }>(envelope.token);
   if (signed.kind !== "workspace" || signed.userId !== user.id)
     throw new HttpError(403, "This action belongs to another account.");
+  if (signed.ontologyVersion !== ontologyVersion)
+    throw new HttpError(
+      409,
+      "The action rules changed. Prepare and review a fresh draft.",
+    );
   const p = mutation.parse(signed.details);
   await validate(user, p);
   const claimed = await db<boolean>("rpc/careline_claim_confirmation", {
