@@ -138,7 +138,8 @@ Confirm the specialty with the caller, mention both available doctors and ask pr
           .flatMap((i) => i.content || [])
           .filter((c) => c.type === "output_text")
           .map((c) => c.text)
-          .join("");
+          .join("")
+          .replace(/\s*\u2014\s*/g, ", ");
         return Response.json({
           text: text || "I could not respond to that. Could you try again?",
           proposal: prepared,
