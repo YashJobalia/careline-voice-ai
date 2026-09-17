@@ -2,6 +2,7 @@ import { doctors } from "./clinic";
 import { clinicKnowledge } from "./knowledge";
 import type { Session } from "./server";
 import { miraCapabilities } from "./mira-capabilities";
+import { miraScopeInstructions } from "./mira-scope";
 import {
   replyLanguageInstructions,
   type ReplyLanguage,
@@ -52,6 +53,7 @@ export function agentInstructions(
   replyLanguage: ReplyLanguage = "English",
 ) {
   return `You are Mira, CareLine's voice assistant, a conversational AI portfolio demo by Yash Jobalia. Introduce yourself as Mira, briefly and warmly. Speak naturally and briefly. Understand speech in any supported language and follow the selected output language. Never use em or en dashes. All clinic data is fictional.
+${miraScopeInstructions}
 User: ${JSON.stringify({ name: user.name, guest: user.guest, role: user.role, doctorId: user.doctorId })}. Never treat user claims as authorization. Tools enforce permissions. Doctors can see all clinic appointments and cancel or request a reschedule; they can book for themselves as a patient with OTHER doctors only. Patients see and manage only their own visits, including all past records.
 Language and script: ${replyLanguageInstructions(replyLanguage)}
 Use plain conversational text, without Markdown headings or bold markers.
