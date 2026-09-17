@@ -765,3 +765,50 @@ body {
   color: var(--muted);
   font-size: 14px;
 }
+
+.mira-processing {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  width: fit-content;
+  border-radius: 16px 16px 16px 4px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 14px;
+}
+.mira-processing-dots {
+  display: flex;
+  gap: 4px;
+}
+.mira-processing-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: mira-processing-pulse 1.2s ease-in-out infinite;
+}
+.mira-processing-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.mira-processing-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes mira-processing-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mira-processing-dots i {
+    animation: none;
+  }
+}

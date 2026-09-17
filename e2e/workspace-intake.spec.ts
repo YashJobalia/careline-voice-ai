@@ -287,6 +287,9 @@ test("speech events stay responsive while a slow tool is pending", async ({
     }),
   );
   await expect.poll(() => requested).toBe(true);
+  await expect(page.locator(".mira-processing")).toHaveText(
+    "Checking availability...",
+  );
   await page.evaluate(() =>
     (window as any).__voice.emit({ type: "input_audio_buffer.speech_stopped" }),
   );
@@ -299,7 +302,75 @@ test("speech events stay responsive while a slow tool is pending", async ({
   await expect(
     page.getByText("Your turn. Mira is listening.", { exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".mira-processing")).toHaveCount(0);
   release();
+});
+
+test("live thinking clears on speech, response completion and hangup", async ({
+  page,
+}) => {
+  await fakeVoice(page);
+  const processing = page.locator(".mira-processing");
+  await page.evaluate(() =>
+    (window as any).__voice.emit({ type: "input_audio_buffer.speech_stopped" }),
+  );
+  await expect(processing).toHaveText("Thinking...");
+  await page.evaluate(() =>
+    (window as any).__voice.emit({ type: "output_audio_buffer.started" }),
+  );
+  await expect(processing).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).__voice.emit({ type: "output_audio_buffer.stopped" });
+    (window as any).__voice.emit({ type: "response.created", response: {} });
+  });
+  await expect(processing).toHaveText("Thinking...");
+  await page.evaluate(() =>
+    (window as any).__voice.emit({
+      type: "response.done",
+      response: { status: "completed", output: [] },
+    }),
+  );
+  await expect(processing).toHaveCount(0);
+  await page.evaluate(() =>
+    (window as any).__voice.emit({ type: "input_audio_buffer.speech_stopped" }),
+  );
+  await expect(processing).toBeVisible();
+  await page.evaluate(() =>
+    (window as any).__voice.emit({
+      type: "conversation.item.input_audio_transcription.completed",
+      transcript: "Please hang up.",
+    }),
+  );
+  await expect(processing).toHaveCount(0);
+});
+
+test("typed requests show a temporary transcript status until the reply arrives", async ({
+  page,
+}) => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/assistant", async (route) => {
+    await gate;
+    await route.fulfill({
+      json: { text: "How can I help with CareLine?", effects: [], traces: [] },
+    });
+  });
+  await page.goto("/");
+  await page
+    .getByRole("textbox", { name: "Message the assistant" })
+    .fill("Hello Mira");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect(page.locator(".mira-processing")).toHaveText("Thinking...");
+  await page
+    .locator(".workspace-transcript")
+    .screenshot({ path: "artifacts/mira-thinking.png" });
+  release();
+  await expect(
+    page.getByText("How can I help with CareLine?", { exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".mira-processing")).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {
@@ -356,3 +427,4 @@ for (const theme of ["light", "dark"] as const) {
     ).toBe(true);
   });
 }
+

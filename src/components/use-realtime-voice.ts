@@ -19,6 +19,7 @@ export function useRealtimeVoice(options: {
     callbacks.current = options;
   });
   const [status, setStatus] = useState("Ready when you are");
+  const [processing, setProcessing] = useState("");
   const [active, setActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -96,6 +97,7 @@ export function useRealtimeVoice(options: {
     setSpeakerMuted(false);
     setElapsedSeconds(0);
     setStatus("Ready when you are");
+    setProcessing("");
   }, []);
   useEffect(() => stop, [stop]);
   const send = useCallback((event: unknown) => {
@@ -107,6 +109,7 @@ export function useRealtimeVoice(options: {
       if (lifecycle.current.ending || channel.current?.readyState !== "open")
         return;
       lifecycle.current.ending = true;
+      setProcessing("");
       if (lifecycle.current.responding) send({ type: "response.cancel" });
       send({ type: "output_audio_buffer.clear" });
       send({
@@ -242,6 +245,13 @@ export function useRealtimeVoice(options: {
         const state = lifecycle.current;
         if (event.type === "response.created") {
           state.responding = true;
+          if (
+            !state.ending &&
+            !state.speaking &&
+            !state.userSpeaking &&
+            !state.tools
+          )
+            setProcessing("Thinking...");
           if (event.response?.metadata?.purpose === "goodbye")
             state.goodbyeId = event.response.id;
         }
@@ -252,11 +262,13 @@ export function useRealtimeVoice(options: {
           state.warned = false;
           state.lastActivity = performance.now();
           setStatus("Listening...");
+          setProcessing("");
         }
         if (event.type === "input_audio_buffer.speech_stopped") {
           state.userSpeaking = false;
           state.lastActivity = performance.now();
           setStatus("Thinking...");
+          if (!state.ending && !state.tools) setProcessing("Thinking...");
         }
         if (
           event.type ===
@@ -282,6 +294,7 @@ export function useRealtimeVoice(options: {
           );
         if (event.type === "output_audio_buffer.started") {
           state.speaking = true;
+          setProcessing("");
           setStatus(
             state.ending ? "Saying goodbye..." : "Speaking - you can interrupt",
           );
@@ -300,13 +313,26 @@ export function useRealtimeVoice(options: {
             stop();
             return;
           }
-          if (!state.ending) setStatus("Listening...");
+          if (!state.ending) {
+            setStatus("Listening...");
+            setProcessing(
+              state.tools
+                ? "Processing your request..."
+                : state.responding
+                  ? "Thinking..."
+                  : "",
+            );
+          }
         }
-        if (event.type === "error")
+        if (event.type === "error") {
+          setProcessing("");
           callbacks.current.onError(
             event.error?.message || "Voice connection error.",
           );
+        }
         const calls = completedToolCalls(event);
+        if (event.type === "response.done" && !calls.length && !state.tools)
+          setProcessing("");
         if (!calls.length || state.ending) return;
         const callTurn = turn.current;
         state.tools++;
@@ -327,6 +353,25 @@ export function useRealtimeVoice(options: {
                 const args = decodeToolArguments(call.arguments);
                 action = args.action;
                 actionArgs = args.args;
+                if (
+                  !lifecycle.current.userSpeaking &&
+                  !lifecycle.current.speaking
+                )
+                  setProcessing(
+                    (
+                      {
+                        availability: "Checking availability...",
+                        list_specialists: "Finding specialists...",
+                        list_appointments: "Checking appointments...",
+                        search_appointments: "Finding your appointment...",
+                        get_account: "Checking account details...",
+                        lookup_account: "Looking up your account...",
+                        prepare: "Preparing your request...",
+                        confirm: "Saving your confirmed request...",
+                        navigate: "Opening the page...",
+                      } as Record<string, string>
+                    )[action] || "Processing your request...",
+                  );
                 if (args.action === "end_call") {
                   send({
                     type: "conversation.item.create",
@@ -435,18 +480,27 @@ export function useRealtimeVoice(options: {
               !lifecycle.current.ending &&
               !lifecycle.current.responding &&
               !lifecycle.current.userSpeaking
-            )
+            ) {
+              setProcessing(lifecycle.current.speaking ? "" : "Thinking...");
               send({ type: "response.create" });
+            }
           })
-          .catch(() =>
+          .catch(() => {
+            if (version === generation.current) setProcessing("");
             callbacks.current.onError(
               "Could not process a voice event. Please retry.",
-            ),
-          )
+            );
+          })
           .finally(() => {
             if (version === generation.current) {
               lifecycle.current.tools--;
               lifecycle.current.lastActivity = performance.now();
+              if (
+                lifecycle.current.ending ||
+                lifecycle.current.speaking ||
+                lifecycle.current.userSpeaking
+              )
+                setProcessing("");
             }
           });
       };
@@ -545,6 +599,7 @@ export function useRealtimeVoice(options: {
   }
   return {
     status,
+    processing,
     active,
     connecting,
     muted,

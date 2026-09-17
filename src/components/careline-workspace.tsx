@@ -152,12 +152,6 @@ export function CarelineWorkspace() {
       mounted.current = false;
     };
   }, [refresh, replaceMessages]);
-  useEffect(() => {
-    transcript.current?.scrollTo({
-      top: transcript.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [messages]);
   const applyEffect = async (effect: ActionResult) => {
     if (effect.receipt) setReceipt(effect.receipt);
     if (Array.isArray(effect.searchResults)) {
@@ -252,6 +246,19 @@ export function CarelineWorkspace() {
         );
     },
   });
+  const processingLabel = busy
+    ? "Thinking..."
+    : voice.active
+      ? voice.processing
+      : "";
+  useEffect(() => {
+    transcript.current?.scrollTo({
+      top: transcript.current.scrollHeight,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [messages, processingLabel]);
   async function prepare(details: Mutation) {
     setError("");
     setNotice("");
@@ -671,7 +678,20 @@ export function CarelineWorkspace() {
                       </div>
                     ))
                   )}
-                  {busy && <p role="status">Thinking...</p>}
+                  {processingLabel && (
+                    <div
+                      className="mira-processing"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <span className="mira-processing-dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                      <span>{processingLabel}</span>
+                    </div>
+                  )}
                 </div>
                 <form
                   className="workspace-composer"
