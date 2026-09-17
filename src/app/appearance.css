@@ -328,6 +328,31 @@ body {
   padding: 18px 20px;
   border-radius: 21px;
 }
+.careline-workspace .reply-language-control {
+  min-width: 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.careline-workspace .compact-voice .reply-language-control {
+  flex: 0 1 300px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--voice-border);
+}
+.careline-workspace .reply-language-control .language-picker-trigger {
+  min-width: 0;
+  max-width: 100%;
+}
+.language-picker-trigger > span {
+  min-width: 0;
+}
+.language-picker-trigger > svg {
+  flex-shrink: 0;
+}
+@media (max-width: 600px) {
+  .careline-workspace .compact-voice .reply-language-control {
+    flex-basis: 100%;
+  }
+}
 .careline-workspace .workspace-main .voice-intro :is(h2, .caller-name) {
   color: var(--voice-ink);
 }
