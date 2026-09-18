@@ -82,12 +82,13 @@ test("forgot password is accessible and never places passwords in chat", async (
   await expect(page.getByRole("status")).toContainText("If this address");
   expect(sent).toEqual([{ email: "alex@example.com", action: "request" }]);
   await page.goto("/reset-password?step=complete");
+  // Both values must pass native validation so submission reaches the mismatch check.
   await page
     .getByLabel("New password", { exact: true })
-    .fill("ExamplePassword123!");
+    .fill("Example123!");
   await page
     .getByLabel("Confirm new password", { exact: true })
-    .fill("DifferentPassword123!");
+    .fill("Different123!");
   await page.getByRole("button", { name: "Save new password" }).click();
   await expect(page.locator(".alert-error")).toHaveText(
     "Passwords do not match.",
